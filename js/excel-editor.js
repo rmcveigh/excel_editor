@@ -539,7 +539,7 @@
           return;
         }
 
-        this.showLoading('Processing Excel file...');
+        this.showProcessLoader('Processing Excel file...');
 
         // Read file
         this.logDebug('Reading file...');
@@ -562,7 +562,9 @@
         this.logDebug('Loading data into application...');
         this.loadData(parsedData);
 
-        this.hideLoading();
+        setTimeout(() => {
+          this.hideProcessLoader();
+        }, 3000);
         this.showMessage(
           `Successfully loaded ${this.data.original.length - 1} rows from ${
             file.name
@@ -571,7 +573,9 @@
         );
       } catch (error) {
         console.error('Error processing file:', error);
-        this.hideLoading();
+        setTimeout(() => {
+          this.hideProcessLoader();
+        }, 3000);
         this.handleError('Failed to process file', error);
       }
     }
@@ -2180,7 +2184,7 @@
       this.hideProcessLoader();
       const loaderId = 'process-loader-' + Date.now();
       const loader = $(
-        `<div class="excel-editor-overlay-loader" id="${loaderId}"><div class="loading-content"><div class="excel-editor-spinner"></div><p><strong>${this.escapeHtml(
+        `<div class="excel-editor-overlay-loader" id="${loaderId}"><div class="loading-content is-flex is-justify-content-center"><div class="excel-editor-spinner loader mr-2"></div><p><strong>${this.escapeHtml(
           message
         )}</strong></p></div></div>`
       );
