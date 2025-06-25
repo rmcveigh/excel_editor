@@ -1,6 +1,6 @@
 /**
  * @file
- * Excel Editor JavaScript - Enhanced version with better architecture
+ * Excel Editor JavaScript - Enhanced version with better architecture and filter fixes
  */
 
 (function ($, Drupal, once, drupalSettings) {
@@ -27,7 +27,7 @@
 
       this.config = {
         endpoints: drupalSettings?.excelEditor?.endpoints || {},
-        settings: drupalSettings?.excelEditor || {},
+        settings: drupalSettings?.excelEditor?.settings || {},
         editableColumns: ['new_barcode', 'notes', 'actions'],
         maxFileSize: 10 * 1024 * 1024, // 10MB
         supportedFormats: ['.xlsx', '.xls', '.csv'],
@@ -96,6 +96,7 @@
         loadingArea: $('.excel-editor-loading'),
         mainArea: $('#excel-editor-main'),
         table: $('#excel-table'),
+        tableContainer: $('.excel-editor-table-container'),
         filtersContainer: $('#filter-controls'),
         draftsContainer: $('#drafts-list'),
         selectionCount: $('#selection-count'),
@@ -157,22 +158,99 @@
       this.elements.selectAllBtn.on('click', () => this.selectAllVisible());
       this.elements.deselectAllBtn.on('click', () => this.deselectAll());
 
-      // Table events (delegated)
-      this.elements.table.on('change', '.excel-editor-cell.editable', (e) =>
-        this.handleCellEdit(e)
-      );
-      this.elements.table.on('change', '.row-checkbox', (e) =>
-        this.handleRowSelection(e)
-      );
-      this.elements.table.on('click', '.filter-link', (e) =>
-        this.handleFilterClick(e)
-      );
+      // Table events - using enhanced binding method
+      this.bindTableEvents();
 
       // Keyboard shortcuts
       $(document).on('keydown', (e) => this.handleKeyboardShortcuts(e));
 
       // Window events
       $(window).on('beforeunload', () => this.handleBeforeUnload());
+    }
+
+    /**
+     * Enhanced table event binding with multiple strategies and debugging
+     */
+    bindTableEvents() {
+      console.log('[Excel Editor] bindTableEvents called');
+
+      // Remove any existing events to prevent conflicts
+      this.elements.tableContainer.off('.excelEditor');
+
+      // Bind with detailed logging
+      this.elements.tableContainer.on(
+        'click.excelEditor',
+        '.filter-link',
+        (e) => {
+          console.log(
+            '[Excel Editor] Click event triggered on table container!',
+            {
+              target: e.target,
+              currentTarget: e.currentTarget,
+              type: e.type,
+              timeStamp: e.timeStamp,
+            }
+          );
+
+          e.preventDefault();
+          e.stopPropagation(); // Prevent any other handlers from interfering
+
+          console.log('[Excel Editor] About to call handleFilterClick...');
+
+          try {
+            this.handleFilterClick(e);
+            console.log(
+              '[Excel Editor] handleFilterClick completed successfully'
+            );
+          } catch (error) {
+            console.error('[Excel Editor] Error in handleFilterClick:', error);
+            alert('Error opening filter: ' + error.message);
+          }
+        }
+      );
+
+      // Additional event binding strategies as fallback
+      $(document)
+        .off('click.excelEditorGlobal')
+        .on(
+          'click.excelEditorGlobal',
+          '.excel-editor-table .filter-link',
+          (e) => {
+            console.log(
+              '[Excel Editor] Global document click handler triggered'
+            );
+            e.preventDefault();
+            e.stopPropagation();
+
+            try {
+              this.handleFilterClick(e);
+            } catch (error) {
+              console.error(
+                '[Excel Editor] Error in global filter handler:',
+                error
+              );
+            }
+          }
+        );
+
+      // Bind other table events
+      this.elements.tableContainer.on(
+        'change.excelEditor',
+        '.excel-editor-cell.editable',
+        (e) => this.handleCellEdit(e)
+      );
+      this.elements.tableContainer.on(
+        'change.excelEditor',
+        '.row-checkbox',
+        (e) => this.handleRowSelection(e)
+      );
+      this.elements.tableContainer.on(
+        'change.excelEditor',
+        '#select-all-checkbox',
+        (e) => this.handleSelectAllCheckbox(e)
+      );
+
+      console.log('[Excel Editor] All table events bound successfully');
     }
 
     /**
@@ -677,8 +755,8 @@
 
       if (!this.data.filtered.length) {
         this.logDebug('No filtered data, showing empty message');
-        this.elements.table.html(
-          '<tr><td colspan="100%">No data available</td></tr>'
+        this.elements.tableContainer.html(
+          '<p class="has-text-centered">No data available</p>'
         );
         return;
       }
@@ -689,6 +767,7 @@
       // Create table structure
       const table = document.createElement('table');
       table.className = 'excel-editor-table table is-fullwidth is-striped';
+      table.id = 'excel-table';
 
       this.logDebug('Creating table header...');
       // Create header
@@ -696,28 +775,38 @@
       table.appendChild(thead);
 
       this.logDebug('Creating table body...');
-      // Create body with virtual scrolling for large datasets
+      // Create body
       const tbody = this.createTableBody();
       this.logDebug('Body rows count:', tbody.children.length);
       table.appendChild(tbody);
 
       fragment.appendChild(table);
 
-      this.logDebug('Finding table container...');
-      const tableContainer = this.elements.table.parent();
-
+      this.logDebug('Replacing table content...');
       // Replace table content
-      tableContainer.html('');
-      tableContainer.append(fragment);
+      this.elements.tableContainer.html('');
+      this.elements.tableContainer.append(fragment);
 
       // Re-cache table element
-      this.elements.table = $('.excel-editor-table');
+      this.elements.table = $('#excel-table');
+
+      // IMPORTANT: Rebind table events after recreation
+      this.bindTableEvents();
 
       const endTime = performance.now();
       this.logDebug(`Table rendered in ${(endTime - startTime).toFixed(2)}ms`);
 
       // Apply row styling based on actions
       this.applyRowStyling();
+
+      // Debug: Check if filter links were created properly
+      console.log(
+        '[Excel Editor] Filter links after table render:',
+        $('.filter-link').length
+      );
+      $('.filter-link').each(function (index) {
+        console.log(`Filter link ${index}:`, $(this).data('column'));
+      });
 
       this.logDebug('Table rendering complete!');
     }
@@ -1040,16 +1129,18 @@
      * Select all visible rows
      */
     selectAllVisible() {
-      this.elements.table.find('.row-checkbox').each((index, checkbox) => {
-        const $checkbox = $(checkbox);
-        const rowIndex = parseInt($checkbox.data('row'));
+      this.elements.tableContainer
+        .find('.row-checkbox')
+        .each((index, checkbox) => {
+          const $checkbox = $(checkbox);
+          const rowIndex = parseInt($checkbox.data('row'));
 
-        if (!$checkbox.is(':checked')) {
-          $checkbox.prop('checked', true);
-          this.data.selected.add(rowIndex);
-          $checkbox.closest('tr').addClass('selected-row');
-        }
-      });
+          if (!$checkbox.is(':checked')) {
+            $checkbox.prop('checked', true);
+            this.data.selected.add(rowIndex);
+            $checkbox.closest('tr').addClass('selected-row');
+          }
+        });
 
       this.updateSelectionCount();
       this.updateSelectAllCheckbox();
@@ -1060,8 +1151,8 @@
      */
     deselectAll() {
       this.data.selected.clear();
-      this.elements.table.find('.row-checkbox').prop('checked', false);
-      this.elements.table.find('tr').removeClass('selected-row');
+      this.elements.tableContainer.find('.row-checkbox').prop('checked', false);
+      this.elements.tableContainer.find('tr').removeClass('selected-row');
 
       this.updateSelectionCount();
       this.updateSelectAllCheckbox();
@@ -1170,9 +1261,6 @@
       );
       $('#reset-to-defaults').on('click', () => this.resetToDefaultColumns());
       $('#show-all-override').on('click', () => this.showAllColumnsOverride());
-      $('#select-all-checkbox').on('change', (e) =>
-        this.handleSelectAllCheckbox(e)
-      );
     }
 
     /**
@@ -1186,6 +1274,246 @@
       } else {
         this.deselectAll();
       }
+    }
+
+    /**
+     * Enhanced handleFilterClick with extensive debugging and error handling
+     */
+    handleFilterClick(e) {
+      console.log('[Excel Editor] handleFilterClick method entered', {
+        event: e,
+        target: e.target,
+        currentTarget: e.currentTarget,
+      });
+
+      e.preventDefault();
+
+      const $target = $(e.target);
+      let columnIndex = $target.data('column');
+
+      console.log('[Excel Editor] Initial column index:', columnIndex);
+
+      // Fallback: if data-column not found on target, try parent elements
+      if (columnIndex === undefined || columnIndex === null) {
+        const $link = $target.closest('.filter-link');
+        columnIndex = $link.data('column');
+        console.log(
+          '[Excel Editor] Column index from closest .filter-link:',
+          columnIndex
+        );
+      }
+
+      // Another fallback: parse from nearby th element
+      if (columnIndex === undefined || columnIndex === null) {
+        const $th = $target.closest('th');
+        columnIndex = $th.data('column');
+        console.log('[Excel Editor] Column index from th:', columnIndex);
+      }
+
+      console.log('[Excel Editor] Final column index:', columnIndex);
+
+      if (columnIndex === undefined || columnIndex === null) {
+        console.error(
+          '[Excel Editor] Could not determine column index for filter',
+          {
+            target: e.target,
+            targetData: $target.data(),
+            closestLink: $target.closest('.filter-link').data(),
+            closestTh: $target.closest('th').data(),
+          }
+        );
+        alert(
+          'Error: Could not determine column for filtering. See console for details.'
+        );
+        return;
+      }
+
+      console.log(
+        '[Excel Editor] About to call showColumnFilter with index:',
+        columnIndex
+      );
+
+      try {
+        this.showColumnFilter(columnIndex);
+        console.log('[Excel Editor] showColumnFilter completed successfully');
+      } catch (error) {
+        console.error('[Excel Editor] Error in showColumnFilter:', error);
+        alert('Error showing filter modal: ' + error.message);
+      }
+    }
+
+    /**
+     * Enhanced showColumnFilter with better error handling and debugging
+     */
+    showColumnFilter(columnIndex) {
+      console.log(
+        '[Excel Editor] showColumnFilter called with columnIndex:',
+        columnIndex
+      );
+
+      // Validate inputs
+      if (!this.data.filtered || !this.data.filtered.length) {
+        console.error('[Excel Editor] No data available for filtering');
+        alert('No data available for filtering');
+        return;
+      }
+
+      if (columnIndex < 0 || columnIndex >= this.data.filtered[0].length) {
+        console.error(
+          '[Excel Editor] Invalid column index:',
+          columnIndex,
+          'Available columns:',
+          this.data.filtered[0].length
+        );
+        alert('Invalid column selected');
+        return;
+      }
+
+      const header = this.data.filtered[0][columnIndex];
+      console.log('[Excel Editor] Creating filter for column:', header);
+
+      const uniqueValues = this.getUniqueColumnValues(columnIndex);
+      console.log(
+        '[Excel Editor] Unique values for column:',
+        uniqueValues.length,
+        'values'
+      );
+
+      // Remove any existing filter modals
+      $('.modal#filter-modal').remove();
+      console.log('[Excel Editor] Removed existing modals');
+
+      // Create modal HTML
+      const optionsHtml = uniqueValues
+        .map(
+          (val) =>
+            `<option value="${this.escapeHtml(val)}">${this.escapeHtml(
+              val || '(empty)'
+            )}</option>`
+        )
+        .join('');
+
+      const modalHtml = `
+        <div class="modal is-active" id="filter-modal" style="display: flex !important; z-index: 9999;">
+          <div class="modal-background"></div>
+          <div class="modal-content">
+            <div class="box">
+              <h3 class="title is-4">Filter: ${this.escapeHtml(header)}</h3>
+              <p><strong>Debug:</strong> Column ${columnIndex} with ${
+        uniqueValues.length
+      } unique values</p>
+
+              <div class="tabs" id="filter-tabs">
+                <ul>
+                  <li class="is-active"><a data-tab="quick">Quick Filter</a></li>
+                  <li><a data-tab="advanced">Advanced Filter</a></li>
+                </ul>
+              </div>
+
+              <!-- Quick Filter Tab -->
+              <div class="tab-content" id="quick-filter-tab">
+                <div class="field">
+                  <label class="label">Select Values to Show:</label>
+                  <div class="control">
+                    <div class="select is-multiple is-fullwidth">
+                      <select multiple size="8" id="quick-filter-select">
+                        ${optionsHtml}
+                      </select>
+                    </div>
+                  </div>
+                  <p class="help">Hold Ctrl/Cmd to select multiple values</p>
+                </div>
+              </div>
+
+              <!-- Advanced Filter Tab -->
+              <div class="tab-content" id="advanced-filter-tab" style="display: none;">
+                <div class="field">
+                  <label class="label">Filter Type:</label>
+                  <div class="control">
+                    <div class="select is-fullwidth">
+                      <select id="filter-type">
+                        <option value="equals">Equals</option>
+                        <option value="contains">Contains</option>
+                        <option value="starts">Starts with</option>
+                        <option value="ends">Ends with</option>
+                        <option value="not_equals">Not equals</option>
+                        <option value="not_contains">Does not contain</option>
+                        <option value="empty">Is empty</option>
+                        <option value="not_empty">Is not empty</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field" id="filter-value-field">
+                  <label class="label">Filter Value:</label>
+                  <div class="control">
+                    <input class="input" type="text" id="filter-value" placeholder="Enter filter value...">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Modal Actions -->
+              <div class="field is-grouped is-grouped-right">
+                <div class="control">
+                  <button class="button" id="clear-column-filter">
+                    <span class="icon"><i class="fas fa-times"></i></span>
+                    <span>Clear Filter</span>
+                  </button>
+                </div>
+                <div class="control">
+                  <button class="button" id="cancel-filter">Cancel</button>
+                </div>
+                <div class="control">
+                  <button class="button is-primary" id="apply-filter">
+                    <span class="icon"><i class="fas fa-check"></i></span>
+                    <span>Apply Filter</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close is-large" aria-label="close"></button>
+        </div>
+      `;
+
+      console.log('[Excel Editor] Creating modal jQuery object');
+      const modal = $(modalHtml);
+
+      console.log('[Excel Editor] Appending modal to body');
+      $('body').append(modal);
+
+      // Verify modal was added and is visible
+      const $modalCheck = $('#filter-modal');
+      console.log('[Excel Editor] Modal verification:', {
+        found: $modalCheck.length,
+        isVisible: $modalCheck.is(':visible'),
+        hasClass: $modalCheck.hasClass('is-active'),
+        display: $modalCheck.css('display'),
+        zIndex: $modalCheck.css('z-index'),
+      });
+
+      // Force visibility if needed
+      if (!$modalCheck.is(':visible')) {
+        console.log('[Excel Editor] Modal not visible, forcing display');
+        $modalCheck
+          .css({
+            display: 'flex !important',
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            'z-index': '9999',
+          })
+          .addClass('is-active')
+          .show();
+      }
+
+      console.log('[Excel Editor] Binding modal events');
+      this.bindFilterModalEvents(modal, columnIndex, header);
+
+      console.log('[Excel Editor] showColumnFilter completed');
     }
 
     /**
@@ -1393,119 +1721,6 @@
     }
 
     /**
-     * Handle filter link clicks
-     */
-    handleFilterClick(e) {
-      e.preventDefault();
-      const columnIndex = parseInt($(e.target).data('column'));
-      this.showColumnFilter(columnIndex);
-    }
-
-    /**
-     * Show column filter modal
-     */
-    showColumnFilter(columnIndex) {
-      const header = this.data.filtered[0][columnIndex];
-      const uniqueValues = this.getUniqueColumnValues(columnIndex);
-
-      // Create modal HTML directly instead of using template
-      const optionsHtml = uniqueValues
-        .map(
-          (val) =>
-            `<option value="${this.escapeHtml(val)}">${this.escapeHtml(
-              val || '(empty)'
-            )}</option>`
-        )
-        .join('');
-
-      const modalHtml = `
-        <div class="modal is-active" id="filter-modal">
-          <div class="modal-background"></div>
-          <div class="modal-content">
-            <div class="box">
-              <h3 class="title is-4">Filter: ${this.escapeHtml(header)}</h3>
-
-              <div class="tabs" id="filter-tabs">
-                <ul>
-                  <li class="is-active"><a data-tab="quick">Quick Filter</a></li>
-                  <li><a data-tab="advanced">Advanced Filter</a></li>
-                </ul>
-              </div>
-
-              <!-- Quick Filter Tab -->
-              <div class="tab-content" id="quick-filter-tab">
-                <div class="field">
-                  <label class="label">Select Values to Show:</label>
-                  <div class="control">
-                    <div class="select is-multiple is-fullwidth">
-                      <select multiple size="8" id="quick-filter-select">
-                        ${optionsHtml}
-                      </select>
-                    </div>
-                  </div>
-                  <p class="help">Hold Ctrl/Cmd to select multiple values</p>
-                </div>
-              </div>
-
-              <!-- Advanced Filter Tab -->
-              <div class="tab-content" id="advanced-filter-tab" style="display: none;">
-                <div class="field">
-                  <label class="label">Filter Type:</label>
-                  <div class="control">
-                    <div class="select is-fullwidth">
-                      <select id="filter-type">
-                        <option value="equals">Equals</option>
-                        <option value="contains">Contains</option>
-                        <option value="starts">Starts with</option>
-                        <option value="ends">Ends with</option>
-                        <option value="not_equals">Not equals</option>
-                        <option value="not_contains">Does not contain</option>
-                        <option value="empty">Is empty</option>
-                        <option value="not_empty">Is not empty</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="field" id="filter-value-field">
-                  <label class="label">Filter Value:</label>
-                  <div class="control">
-                    <input class="input" type="text" id="filter-value" placeholder="Enter filter value...">
-                  </div>
-                </div>
-              </div>
-
-              <!-- Modal Actions -->
-              <div class="field is-grouped is-grouped-right">
-                <div class="control">
-                  <button class="button" id="clear-column-filter">
-                    <span class="icon"><i class="fas fa-times"></i></span>
-                    <span>Clear Filter</span>
-                  </button>
-                </div>
-                <div class="control">
-                  <button class="button" id="cancel-filter">Cancel</button>
-                </div>
-                <div class="control">
-                  <button class="button is-primary" id="apply-filter">
-                    <span class="icon"><i class="fas fa-check"></i></span>
-                    <span>Apply Filter</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <button class="modal-close is-large" aria-label="close"></button>
-        </div>
-      `;
-
-      const modal = $(modalHtml);
-      $('body').append(modal);
-
-      this.bindFilterModalEvents(modal, columnIndex, header);
-    }
-
-    /**
      * Get unique values for a column
      */
     getUniqueColumnValues(columnIndex) {
@@ -1586,7 +1801,7 @@
      * Apply filter from modal
      */
     applyFilterFromModal(modal, columnIndex) {
-      const activeTab = modal.find('[data-tab].is-active').data('tab');
+      const activeTab = modal.find('.tabs .is-active [data-tab]').data('tab');
 
       if (activeTab === 'quick') {
         // Quick filter using multi-select
@@ -2201,6 +2416,18 @@
     }
 
     /**
+     * Test function to be called from console
+     */
+    testDirectFilter() {
+      console.log('[Excel Editor] Testing direct filter call');
+      if (this.data.filtered && this.data.filtered.length > 0) {
+        this.showColumnFilter(0); // Test with first column
+      } else {
+        console.log('[Excel Editor] No data loaded for test');
+      }
+    }
+
+    /**
      * Debug function to check column configuration (accessible from browser console)
      */
     debugColumnConfig() {
@@ -2362,9 +2589,15 @@
       // Make debug function globally accessible
       window.excelEditorDebug = () => app.debugColumnConfig();
 
+      // Make test function globally accessible
+      window.testExcelEditorFilter = () => app.testDirectFilter();
+
       console.log('Excel Editor initialized successfully with XLSX library');
       console.log(
         'Run "excelEditorDebug()" in console to debug column configuration'
+      );
+      console.log(
+        'Run "testExcelEditorFilter()" in console to test filter functionality'
       );
     } catch (error) {
       console.error('Failed to initialize Excel Editor:', error);

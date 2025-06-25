@@ -8,7 +8,7 @@ use Drupal\Core\Database\Connection;
 use Drupal\Core\Session\AccountProxyInterface;
 
 /**
- * @todo Add class description.
+ * Draft Manager service for Excel Editor module.
  */
 final class DraftManager {
 
@@ -40,10 +40,35 @@ final class DraftManager {
       'changed' => time(),
     ];
 
-    $query = $this->database->insert('excel_editor_drafts')
+    $query = $this->connection->insert('excel_editor_drafts')
       ->fields($fields);
 
     return $query->execute();
+  }
+
+  /**
+   * Loads a specific draft for the current user.
+   *
+   * @param int $draft_id
+   *   The ID of the draft to load.
+   *
+   * @return object|null
+   *   The draft object or NULL if not found.
+   */
+  public function loadDraft(int $draft_id) {
+    $query = $this->connection->select('excel_editor_drafts', 'd')
+      ->fields('d')
+      ->condition('d.id', $draft_id)
+      ->condition('d.uid', $this->currentUser->id());
+
+    $result = $query->execute()->fetchObject();
+
+    if ($result && $result->draft_data) {
+      // Decode the JSON data
+      $result->draft_data = json_decode($result->draft_data, TRUE);
+    }
+
+    return $result;
   }
 
   /**
@@ -56,7 +81,7 @@ final class DraftManager {
    *   The number of rows deleted.
    */
   public function deleteDraft(int $draft_id) {
-    $query = $this->database->delete('excel_editor_drafts')
+    $query = $this->connection->delete('excel_editor_drafts')
       ->condition('id', $draft_id)
       ->condition('uid', $this->currentUser->id());
 
@@ -70,7 +95,7 @@ final class DraftManager {
    *   An array of draft objects.
    */
   public function listDrafts() {
-    $query = $this->database->select('excel_editor_drafts', 'd')
+    $query = $this->connection->select('excel_editor_drafts', 'd')
       ->fields('d', ['id', 'name', 'changed'])
       ->condition('d.uid', $this->currentUser->id())
       ->orderBy('d.changed', 'DESC');

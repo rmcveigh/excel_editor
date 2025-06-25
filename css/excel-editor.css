@@ -301,3 +301,216 @@
     padding: 0.25rem;
   }
 }
+
+/* Enhanced main loading area */
+.excel-editor-loading {
+  display: none !important;
+  text-align: center;
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin: 2rem auto;
+  max-width: 400px;
+}
+
+.excel-editor-loading.active {
+  display: block !important;
+}
+
+.excel-editor-loading p {
+  margin: 1rem 0 0 0;
+  color: #495057;
+  font-weight: 500;
+}
+
+/* Overlay loader styles */
+.excel-editor-overlay-loader {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 1000 !important;
+  border-radius: 4px !important;
+  backdrop-filter: blur(1px);
+}
+
+.excel-editor-overlay-loader .loading-content {
+  text-align: center;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #dee2e6;
+  max-width: 300px;
+}
+
+/* Quick loader styles */
+.excel-editor-quick-loader {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  background: #007bff !important;
+  color: white !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3) !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  animation: slideInRight 0.3s ease-out;
+}
+
+/* Spinner animations */
+@keyframes excel-editor-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* Enhanced spinner */
+.excel-editor-spinner {
+  width: 2rem !important;
+  height: 2rem !important;
+  border: 3px solid #f3f3f3 !important;
+  border-top: 3px solid #007bff !important;
+  border-radius: 50% !important;
+  animation: excel-editor-spin 1s linear infinite !important;
+  margin: 0 auto 1rem auto !important;
+}
+
+/* Small spinner for quick loader */
+.excel-editor-quick-loader .spinner {
+  width: 1rem !important;
+  height: 1rem !important;
+  border: 2px solid rgba(255, 255, 255, 0.3) !important;
+  border-top: 2px solid white !important;
+  border-radius: 50% !important;
+  animation: excel-editor-spin 1s linear infinite !important;
+}
+
+/* Table loading overlay specific styles */
+.excel-editor-table-container {
+  position: relative;
+}
+
+.excel-editor-table-container .excel-editor-overlay-loader {
+  border-radius: 4px;
+}
+
+/* Button loading states */
+.button.is-loading-custom {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.button.is-loading-custom::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  animation: excel-editor-spin 1s linear infinite;
+}
+
+/* Progress bar for longer operations */
+.excel-editor-progress {
+  width: 100%;
+  height: 4px;
+  background: #e9ecef;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.excel-editor-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  border-radius: 2px;
+  animation: progressIndeterminate 2s ease-in-out infinite;
+}
+
+@keyframes progressIndeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Skeleton loading for table rows */
+.excel-editor-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.5s infinite;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Filter modal loading */
+#filter-modal .loading-filters {
+  text-align: center;
+  padding: 2rem;
+  color: #6c757d;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .excel-editor-quick-loader {
+    top: 10px !important;
+    right: 10px !important;
+    left: 10px !important;
+    font-size: 0.8rem !important;
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  .excel-editor-overlay-loader .loading-content {
+    padding: 1.5rem;
+    margin: 0 1rem;
+  }
+}
