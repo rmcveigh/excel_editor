@@ -1,0 +1,4 @@
+services:
+  draft_manager:
+    class: Drupal\excel_editor\DraftManager
+    arguments: ['@database', '@current_user']

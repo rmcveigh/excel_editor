@@ -1,0 +1,11 @@
+<div class="excel-editor-upload" id="excel-upload-area">
+  <div class="has-text-centered">
+    <p class="title is-4">{{ 'Upload Excel File'|t }}</p>
+    <p class="subtitle is-6">{{ 'Drag and drop an Excel file here or click to browse'|t }}</p>
+    <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display: none;">
+    <button class="button is-primary" onclick="document.getElementById('excel-file-input').click()">
+      <span class="icon"><i class="fas fa-upload"></i></span>
+      <span>{{ 'Choose File'|t }}</span>
+    </button>
+  </div>
+</div>

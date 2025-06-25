@@ -1,0 +1,29 @@
+<div class="excel-editor-container">
+
+  {# Upload Area #}
+  {% include '@excel_editor/components/upload-area.html.twig' %}
+
+  {# Loading Indicator #}
+  {% include '@excel_editor/components/loading.html.twig' %}
+
+  {# Main Editor Interface #}
+  <div id="excel-editor-main" style="display: none;">
+
+    {# Toolbar #}
+    {% include '@excel_editor/components/toolbar.html.twig' %}
+
+    {# Filters #}
+    {% include '@excel_editor/components/filters.html.twig' %}
+
+    {# Table Container #}
+    {% include '@excel_editor/components/table-container.html.twig' %}
+
+  </div>
+
+  {# Drafts Section #}
+  {% include '@excel_editor/components/drafts.html.twig' %}
+
+</div>
+
+{# Hidden Templates for JavaScript #}
+{% include '@excel_editor/components/templates.html.twig' %}

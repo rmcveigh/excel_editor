@@ -1,0 +1,8 @@
+use excel editor:
+  title: 'Use Excel Editor'
+  description: 'Upload, edit, and export Excel files using the Excel Editor'
+
+administer excel editor:
+  title: 'Administer Excel Editor'
+  description: 'Configure Excel Editor settings and default column visibility'
+  restrict access: true

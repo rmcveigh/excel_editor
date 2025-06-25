@@ -1,0 +1,52 @@
+<script type="text/template" id="column-visibility-modal-template">
+  <div class="modal is-active">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">
+          <span class="icon"><i class="fas fa-eye"></i></span>
+          {{ 'Show/Hide Columns'|t }}
+        </p>
+        <button class="delete" aria-label="close"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="field">
+          <label class="label">{{ 'Column Visibility:'|t }}</label>
+          <p class="help">{{ 'Uncheck columns you want to hide from the table view.'|t }}</p>
+        </div>
+
+        <div class="columns is-multiline" id="column-checkboxes">
+          <!-- Column checkboxes will be generated here -->
+        </div>
+
+        <div class="field is-grouped">
+          <div class="control">
+            <button class="button is-small" id="show-all-columns">
+              <span class="icon is-small"><i class="fas fa-eye"></i></span>
+              <span>{{ 'Show All'|t }}</span>
+            </button>
+          </div>
+          <div class="control">
+            <button class="button is-small" id="hide-non-editable">
+              <span class="icon is-small"><i class="fas fa-eye-slash"></i></span>
+              <span>{{ 'Hide Read-Only'|t }}</span>
+            </button>
+          </div>
+          <div class="control">
+            <button class="button is-small" id="show-only-editable">
+              <span class="icon is-small"><i class="fas fa-edit"></i></span>
+              <span>{{ 'Show Only Editable'|t }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+      <footer class="modal-card-foot">
+        <button class="button is-success" id="apply-column-visibility">
+          <span class="icon"><i class="fas fa-check"></i></span>
+          <span>{{ 'Apply Changes'|t }}</span>
+        </button>
+        <button class="button" id="cancel-column-visibility">{{ 'Cancel'|t }}</button>
+      </footer>
+    </div>
+  </div>
+</script>

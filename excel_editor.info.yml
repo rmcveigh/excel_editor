@@ -1,0 +1,8 @@
+name: Excel Editor
+type: module
+description: 'Advanced Excel file editor with upload, edit, filter and export capabilities'
+core_version_requirement: ^9 || ^10
+package: Custom
+dependencies:
+  - drupal:file
+  - drupal:user

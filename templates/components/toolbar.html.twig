@@ -1,0 +1,46 @@
+<div class="excel-editor-toolbar">
+  <div class="field is-grouped">
+    <div class="control">
+      <button class="button is-success" id="save-draft-btn">
+        <span class="icon"><i class="fas fa-save"></i></span>
+        <span>{{ 'Save Draft'|t }}</span>
+      </button>
+    </div>
+    <div class="control">
+      <button class="button is-info" id="export-btn">
+        <span class="icon"><i class="fas fa-download"></i></span>
+        <span>{{ 'Export Selected'|t }}</span>
+      </button>
+    </div>
+    <div class="control">
+      <button class="button is-link" id="export-all-btn">
+        <span class="icon"><i class="fas fa-download"></i></span>
+        <span>{{ 'Export All'|t }}</span>
+      </button>
+    </div>
+    <div class="control">
+      <button class="button is-light" id="toggle-columns-btn">
+        <span class="icon"><i class="fas fa-eye"></i></span>
+        <span>{{ 'Show/Hide Columns'|t }}</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="field is-grouped selection-controls">
+    <div class="control">
+      <button class="button is-small is-outlined" id="select-all-visible-btn">
+        <span class="icon is-small"><i class="fas fa-check-square"></i></span>
+        <span>{{ 'Select All Visible'|t }}</span>
+      </button>
+    </div>
+    <div class="control">
+      <button class="button is-small is-outlined" id="deselect-all-btn">
+        <span class="icon is-small"><i class="fas fa-square"></i></span>
+        <span>{{ 'Deselect All'|t }}</span>
+      </button>
+    </div>
+    <div class="control">
+      <span class="tag is-info" id="selection-count">{{ '0 rows selected'|t }}</span>
+    </div>
+  </div>
+</div>

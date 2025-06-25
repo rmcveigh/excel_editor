@@ -1,0 +1,141 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Excel Editor module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function excel_editor_schema() {
+  $schema['excel_editor_drafts'] = [
+    'description' => 'Stores saved drafts for the Excel Editor module.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique draft ID.',
+      ],
+      'uid' => [
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => "The user ID of the draft owner.",
+      ],
+      'name' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The name of the draft.',
+      ],
+      'draft_data' => [
+        'type' => 'blob',
+        'size' => 'big',
+        'not null' => TRUE,
+        'description' => 'The serialized JSON data of the draft.',
+      ],
+      'created' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The timestamp when the draft was created.',
+      ],
+      'changed' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The timestamp when the draft was last updated.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'draft_uid' => ['uid'],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function excel_editor_install() {
+  // Check if table exists before creating to prevent "table already exists" error
+  $database = \Drupal::database();
+  if (!$database->schema()->tableExists('excel_editor_drafts')) {
+    $schema = excel_editor_schema();
+    if (isset($schema['excel_editor_drafts'])) {
+      $database->schema()->createTable('excel_editor_drafts', $schema['excel_editor_drafts']);
+      \Drupal::messenger()->addMessage(t('Excel Editor module installed successfully. Database table created.'));
+    }
+  } else {
+    \Drupal::messenger()->addWarning(t('Excel Editor table already exists. Skipping table creation.'));
+  }
+
+  // Clear caches to ensure everything is properly registered
+  drupal_flush_all_caches();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function excel_editor_uninstall() {
+  // Remove the table and all data when module is uninstalled
+  $database = \Drupal::database();
+  if ($database->schema()->tableExists('excel_editor_drafts')) {
+    $database->schema()->dropTable('excel_editor_drafts');
+    \Drupal::messenger()->addMessage(t('Excel Editor module uninstalled. Database table removed.'));
+  }
+
+  // Remove any configuration or variables if they exist
+  $config_factory = \Drupal::configFactory();
+  $config_names = $config_factory->listAll('excel_editor.');
+  foreach ($config_names as $config_name) {
+    $config_factory->getEditable($config_name)->delete();
+  }
+
+  // Clear caches
+  drupal_flush_all_caches();
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function excel_editor_requirements($phase) {
+  $requirements = [];
+
+  if ($phase == 'runtime') {
+    // Check if the database table exists
+    $database = \Drupal::database();
+    if (!$database->schema()->tableExists('excel_editor_drafts')) {
+      $requirements['excel_editor_table'] = [
+        'title' => t('Excel Editor Database Table'),
+        'value' => t('Missing'),
+        'description' => t('The Excel Editor drafts table is missing. Try reinstalling the module.'),
+        'severity' => REQUIREMENT_ERROR,
+      ];
+    } else {
+      $requirements['excel_editor_table'] = [
+        'title' => t('Excel Editor Database Table'),
+        'value' => t('Available'),
+        'severity' => REQUIREMENT_OK,
+      ];
+    }
+
+    // Check for required PHP extensions (if any)
+    if (!extension_loaded('json')) {
+      $requirements['excel_editor_json'] = [
+        'title' => t('Excel Editor JSON Support'),
+        'value' => t('Not available'),
+        'description' => t('The Excel Editor module requires JSON support.'),
+        'severity' => REQUIREMENT_ERROR,
+      ];
+    }
+  }
+
+  return $requirements;
+}
+

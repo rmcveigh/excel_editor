@@ -1,0 +1,57 @@
+# Main Excel Editor page
+excel_editor.page:
+  path: '/excel-editor'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::page'
+    _title: 'Excel Editor'
+  requirements:
+    _permission: 'use excel editor'
+
+# Admin configuration page
+excel_editor.admin:
+  path: '/admin/config/content/excel-editor'
+  defaults:
+    _form: '\Drupal\excel_editor\Form\ExcelEditorConfigForm'
+    _title: 'Excel Editor Settings'
+  requirements:
+    _permission: 'administer excel editor'
+
+# Save draft endpoint
+excel_editor.save_draft:
+  path: '/excel-editor/save-draft'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::saveDraft'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'POST'
+    _csrf_token: 'TRUE'
+
+# Load draft endpoint
+excel_editor.load_draft:
+  path: '/excel-editor/load-draft/{draft_id}'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::loadDraft'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'GET'
+    draft_id: '\d+'
+
+# Delete draft endpoint
+excel_editor.delete_draft:
+  path: '/excel-editor/delete-draft/{draft_id}'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::deleteDraft'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'DELETE'
+    _csrf_token: 'TRUE'
+    draft_id: '\d+'
+
+# List user's drafts endpoint
+excel_editor.list_drafts:
+  path: '/excel-editor/drafts'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::listDrafts'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'GET'

@@ -1,0 +1,10 @@
+default_visible_columns:
+  - new_barcode
+  - notes
+  - actions
+hide_behavior: 'show_all'
+always_visible:
+  - new_barcode
+  - notes
+  - actions
+max_visible_columns: 20

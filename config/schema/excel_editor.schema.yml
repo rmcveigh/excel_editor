@@ -1,0 +1,22 @@
+excel_editor.settings:
+  type: config_object
+  label: 'Excel Editor settings'
+  mapping:
+    default_visible_columns:
+      type: sequence
+      label: 'Default visible columns'
+      sequence:
+        type: string
+        label: 'Column name'
+    hide_behavior:
+      type: string
+      label: 'Column hiding behavior'
+    always_visible:
+      type: sequence
+      label: 'Always visible columns'
+      sequence:
+        type: string
+        label: 'Column name'
+    max_visible_columns:
+      type: integer
+      label: 'Maximum visible columns'

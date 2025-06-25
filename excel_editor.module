@@ -1,0 +1,30 @@
+<?php
+
+/**
+ * @file
+ * Main module file for Excel Editor functionality.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function excel_editor_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.excel_editor':
+      return '<p>' . t('Excel Editor module allows users to upload, edit, filter and export Excel files directly in Drupal.') . '</p>';
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function excel_editor_theme() {
+  return [
+    'excel_editor_page' => [
+      'variables' => [],
+      'template' => 'excel-editor-page',
+    ],
+  ];
+}
