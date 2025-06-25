@@ -13,7 +13,6 @@ excel_editor:
     - excel_editor/sheetjs
     - excel_editor/bulma
     - excel_editor/fontawesome
-    - excel_editor/chosen
 
 bulma:
   version: 0.9.4
@@ -31,11 +30,3 @@ sheetjs:
   version: 0.18.5
   js:
     'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': { type: external, minified: true, weight: -20 }
-
-chosen:
-  version: 1.8.7
-  css:
-    theme:
-      'https://cdn.jsdelivr.net/npm/chosen-js@1.8.7/chosen.min.css': { type: external }
-  js:
-    'https://cdn.jsdelivr.net/npm/chosen-js@1.8.7/chosen.jquery.min.js': { type: external, minified: true }
