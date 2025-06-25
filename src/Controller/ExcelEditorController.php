@@ -18,7 +18,7 @@ class ExcelEditorController extends ControllerBase {
    *
    * @var \Drupal\excel_editor\DraftManager
    */
-  protected $draftManager;
+  protected DraftManager $draftManager;
 
   /**
    * Constructs a new ExcelEditorController object.
@@ -48,7 +48,7 @@ class ExcelEditorController extends ControllerBase {
     $hideBehavior = $config->get('hide_behavior') ?: 'show_all';
     $maxVisibleColumns = $config->get('max_visible_columns') ?: 50;
 
-    // This logic to handle string/array from config is good.
+    // Handle string/array from config.
     if (is_string($defaultVisibleColumns)) {
       $defaultVisibleColumns = array_filter(array_map('trim', explode("\n", $defaultVisibleColumns)));
     }
@@ -73,6 +73,7 @@ class ExcelEditorController extends ControllerBase {
               'defaultVisibleColumns' => $defaultVisibleColumns,
               'hideBehavior' => $hideBehavior,
               'maxVisibleColumns' => (int) $maxVisibleColumns,
+              'debug' => $this->currentUser()->hasPermission('administer excel editor'),
             ],
           ],
         ],
@@ -84,38 +85,119 @@ class ExcelEditorController extends ControllerBase {
    * Save draft endpoint.
    */
   public function saveDraft(Request $request) {
-    try {
-      $data = json_decode($request->getContent(), TRUE);
-      $draftName = $data['name'] ?? 'Untitled Draft';
-      $draftData = $data['data'] ?? [];
+    // Ensure proper JSON response headers.
+    $response_data = ['success' => FALSE, 'message' => 'Unknown error'];
 
-      if (empty($draftData)) {
-        return new JsonResponse(['success' => FALSE, 'message' => 'Invalid data'], 400);
+    try {
+      // Log the request for debugging.
+      $this->getLogger('excel_editor')->info('Save draft request received from user @uid', [
+        '@uid' => $this->currentUser()->id(),
+      ]);
+
+      // Validate request method.
+      if (!$request->isMethod('POST')) {
+        $response_data['message'] = 'Only POST requests are allowed';
+        return new JsonResponse($response_data, 405);
       }
 
-      $draft_id = $this->draftManager->saveDraft($draftName, $draftData);
+      // Get and validate JSON data.
+      $content = $request->getContent();
+      if (empty($content)) {
+        $response_data['message'] = 'No data received';
+        return new JsonResponse($response_data, 400);
+      }
 
-      return new JsonResponse([
-        'success' => TRUE,
-        'draft_id' => $draft_id,
-        'message' => 'Draft saved successfully',
-      ]);
+      $data = json_decode($content, TRUE);
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        $response_data['message'] = 'Invalid JSON data: ' . json_last_error_msg();
+        return new JsonResponse($response_data, 400);
+      }
+
+      // Validate required fields.
+      if (!isset($data['name']) || !isset($data['data'])) {
+        $response_data['message'] = 'Missing required fields: name and data';
+        return new JsonResponse($response_data, 400);
+      }
+
+      $draftName = trim($data['name']);
+      $draftData = $data['data'];
+
+      if (empty($draftName)) {
+        $draftName = 'Untitled Draft ' . date('Y-m-d H:i:s');
+      }
+
+      if (empty($draftData) || !is_array($draftData)) {
+        $response_data['message'] = 'Invalid or empty data';
+        return new JsonResponse($response_data, 400);
+      }
+
+      // Prepare the complete draft data.
+      $completeDraftData = [
+        'data' => $draftData,
+        'filters' => $data['filters'] ?? [],
+        'hiddenColumns' => $data['hiddenColumns'] ?? [],
+        'selected' => $data['selected'] ?? [],
+        'timestamp' => $data['timestamp'] ?? date('c'),
+      ];
+
+      // Save the draft.
+      $draft_id = $this->draftManager->saveDraft($draftName, $completeDraftData);
+
+      if ($draft_id) {
+        $response_data = [
+          'success' => TRUE,
+          'draft_id' => $draft_id,
+          'message' => 'Draft saved successfully',
+        ];
+
+        $this->getLogger('excel_editor')->info('Draft saved successfully with ID @id for user @uid', [
+          '@id' => $draft_id,
+          '@uid' => $this->currentUser()->id(),
+        ]);
+
+        return new JsonResponse($response_data, 200);
+      }
+      else {
+        throw new \Exception('Failed to save draft to database');
+      }
     }
     catch (\Exception $e) {
-      $this->getLogger('excel_editor')->error('Error saving draft: @error', ['@error' => $e->getMessage()]);
-      return new JsonResponse(['success' => FALSE, 'message' => $e->getMessage()], 500);
+      $this->getLogger('excel_editor')->error('Error saving draft: @error', [
+        '@error' => $e->getMessage(),
+      ]);
+
+      $response_data['message'] = 'Failed to save draft: ' . $e->getMessage();
+      return new JsonResponse($response_data, 500);
     }
   }
 
   /**
    * Load draft endpoint.
    */
-  public function loadDraft($draft_id) {
+  public function loadDraft($draft_id, Request $request) {
     try {
-      $draft = $this->draftManager->loadDraft($draft_id);
-      if ($draft) {
-        return new JsonResponse(['success' => TRUE, 'data' => $draft->draft_data]);
+      // Validate draft ID.
+      if (!is_numeric($draft_id)) {
+        return new JsonResponse(['success' => FALSE, 'message' => 'Invalid draft ID'], 400);
       }
+
+      $draft = $this->draftManager->loadDraft((int) $draft_id);
+
+      if ($draft) {
+        $this->getLogger('excel_editor')->info('Draft @id loaded for user @uid', [
+          '@id' => $draft_id,
+          '@uid' => $this->currentUser()->id(),
+        ]);
+
+        return new JsonResponse([
+          'success' => TRUE,
+          'data' => $draft->draft_data,
+          'name' => $draft->name,
+          'created' => $draft->created,
+          'changed' => $draft->changed,
+        ]);
+      }
+
       return new JsonResponse(['success' => FALSE, 'message' => 'Draft not found'], 404);
     }
     catch (\Exception $e) {
@@ -127,10 +209,25 @@ class ExcelEditorController extends ControllerBase {
   /**
    * Delete draft endpoint.
    */
-  public function deleteDraft($draft_id) {
+  public function deleteDraft($draft_id, Request $request) {
     try {
-      $this->draftManager->deleteDraft($draft_id);
-      return new JsonResponse(['success' => TRUE, 'message' => 'Draft deleted successfully']);
+      // Validate draft ID.
+      if (!is_numeric($draft_id)) {
+        return new JsonResponse(['success' => FALSE, 'message' => 'Invalid draft ID'], 400);
+      }
+
+      $deleted = $this->draftManager->deleteDraft((int) $draft_id);
+
+      if ($deleted) {
+        $this->getLogger('excel_editor')->info('Draft @id deleted for user @uid', [
+          '@id' => $draft_id,
+          '@uid' => $this->currentUser()->id(),
+        ]);
+
+        return new JsonResponse(['success' => TRUE, 'message' => 'Draft deleted successfully']);
+      }
+
+      return new JsonResponse(['success' => FALSE, 'message' => 'Draft not found or could not be deleted'], 404);
     }
     catch (\Exception $e) {
       $this->getLogger('excel_editor')->error('Error deleting draft: @error', ['@error' => $e->getMessage()]);
@@ -141,21 +238,44 @@ class ExcelEditorController extends ControllerBase {
   /**
    * List user's drafts endpoint.
    */
-  public function listDrafts() {
+  public function listDrafts(Request $request) {
     try {
       $drafts = $this->draftManager->listDrafts();
+
       // Format the drafts to match the expected JS format.
       $formatted_drafts = array_map(function ($draft) {
+        // Try to get row count from draft data if available.
+        $row_count = 'N/A';
+        try {
+          // The draft data is already decoded by DraftManager.
+          if (isset($draft->draft_data) && is_array($draft->draft_data)) {
+            $data = $draft->draft_data;
+            if (isset($data['data']) && is_array($data['data'])) {
+              // Subtract 1 for header row.
+              $row_count = max(0, count($data['data']) - 1);
+            }
+          }
+        }
+        catch (\Exception $e) {
+          // If we can't get row count, just use N/A.
+        }
+
         return [
           'id' => $draft->id,
           'name' => $draft->name,
-          'created' => date('Y-m-d H:i:s', $draft->changed),
-          // You could store row count or calculate it if needed.
-          'rows' => 'N/A',
+        // ISO format.
+          'created' => date('c', $draft->created),
+        // ISO format.
+          'changed' => date('c', $draft->changed),
+          'rows' => $row_count,
         ];
       }, $drafts);
 
-      return new JsonResponse(['success' => TRUE, 'drafts' => $formatted_drafts]);
+      return new JsonResponse([
+        'success' => TRUE,
+        'drafts' => $formatted_drafts,
+        'count' => count($formatted_drafts),
+      ]);
     }
     catch (\Exception $e) {
       $this->getLogger('excel_editor')->error('Error listing drafts: @error', ['@error' => $e->getMessage()]);

@@ -16,7 +16,7 @@ excel_editor.admin:
   requirements:
     _permission: 'administer excel editor'
 
-# Save draft endpoint
+# Save draft endpoint - CSRF token required but handled properly
 excel_editor.save_draft:
   path: '/excel-editor/save-draft'
   defaults:
@@ -24,7 +24,9 @@ excel_editor.save_draft:
   requirements:
     _permission: 'use excel editor'
     _method: 'POST'
-    _csrf_token: 'TRUE'
+    _format: 'json'
+  options:
+    _auth: ['cookie']
 
 # Load draft endpoint
 excel_editor.load_draft:
@@ -35,8 +37,9 @@ excel_editor.load_draft:
     _permission: 'use excel editor'
     _method: 'GET'
     draft_id: '\d+'
+    _format: 'json'
 
-# Delete draft endpoint
+# Delete draft endpoint - CSRF token required but handled properly
 excel_editor.delete_draft:
   path: '/excel-editor/delete-draft/{draft_id}'
   defaults:
@@ -44,8 +47,10 @@ excel_editor.delete_draft:
   requirements:
     _permission: 'use excel editor'
     _method: 'DELETE'
-    _csrf_token: 'TRUE'
     draft_id: '\d+'
+    _format: 'json'
+  options:
+    _auth: ['cookie']
 
 # List user's drafts endpoint
 excel_editor.list_drafts:
@@ -55,3 +60,4 @@ excel_editor.list_drafts:
   requirements:
     _permission: 'use excel editor'
     _method: 'GET'
+    _format: 'json'

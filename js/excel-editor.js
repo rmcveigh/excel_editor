@@ -23,6 +23,7 @@
         currentFilters: {},
         isInitialized: false,
         isLoading: false,
+        currentProcessLoader: null,
       };
 
       this.config = {
@@ -32,6 +33,10 @@
         maxFileSize: 10 * 1024 * 1024, // 10MB
         supportedFormats: ['.xlsx', '.xls', '.csv'],
       };
+
+      // Get CSRF token for API calls
+      this.csrfToken = null;
+      this.getCsrfToken();
 
       // Debug config only if debug mode is enabled
       this.logDebug('Excel Editor config loaded:', this.config);
@@ -57,6 +62,23 @@
         this.logDebug('Excel Editor initialized successfully');
       } catch (error) {
         this.handleError('Failed to initialize Excel Editor', error);
+      }
+    }
+
+    /**
+     * Get CSRF token for API calls
+     */
+    async getCsrfToken() {
+      try {
+        const response = await fetch('/session/token');
+        if (response.ok) {
+          this.csrfToken = await response.text();
+          this.logDebug('CSRF token obtained:', this.csrfToken ? 'Yes' : 'No');
+        } else {
+          console.warn('Failed to get CSRF token:', response.status);
+        }
+      } catch (error) {
+        console.warn('Error getting CSRF token:', error);
       }
     }
 
@@ -416,8 +438,11 @@
       const text = new TextDecoder().decode(data);
       const lines = text.split('\n').filter((line) => line.trim());
       return lines.map((line) => {
-        // Simple CSV parsing - could be enhanced with proper CSV library
-        return line.split(',').map((cell) => cell.trim().replace(/^"|"$/g, ''));
+        // Simple CSV parsing with enhanced trimming
+        return line.split(',').map((cell) => {
+          // Remove quotes and trim whitespace
+          return cell.trim().replace(/^["']|["']$/g, '');
+        });
       });
     }
 
@@ -499,8 +524,22 @@
             return;
           }
 
+          // TRIM ALL CELL VALUES to prevent duplicate filters
+          const trimmedData = jsonData.map((row, rowIndex) => {
+            if (!Array.isArray(row)) return row;
+
+            return row.map((cell, cellIndex) => {
+              // Trim all string values, preserve other types
+              if (typeof cell === 'string') {
+                return cell.trim();
+              }
+              // Convert other types to strings and trim
+              return String(cell || '').trim();
+            });
+          });
+
           // Filter out completely empty rows and ensure we have at least header + 1 data row
-          const filteredData = jsonData.filter((row, index) => {
+          const filteredData = trimmedData.filter((row, index) => {
             // Always keep the first row (headers)
             if (index === 0) return true;
 
@@ -532,7 +571,11 @@
             return;
           }
 
-          this.logDebug('Final filtered data:', filteredData.length, 'rows');
+          this.logDebug(
+            'Final filtered and trimmed data:',
+            filteredData.length,
+            'rows'
+          );
           resolve(filteredData);
         } catch (error) {
           console.error('Excel parsing error:', error);
@@ -571,8 +614,14 @@
         throw new Error('No data found in file');
       }
 
+      // Trim all data before loading
+      const trimmedData = data.map((row) => {
+        if (!Array.isArray(row)) return row;
+        return row.map((cell) => String(cell || '').trim());
+      });
+
       this.logDebug('Setting original data...');
-      this.data.original = this.deepClone(data);
+      this.data.original = this.deepClone(trimmedData);
 
       this.logDebug('Adding editable columns...');
       this.addEditableColumns();
@@ -747,9 +796,9 @@
     }
 
     /**
-     * Render the data table with performance optimization
+     * Render the data table with performance optimization and loading
      */
-    renderTable() {
+    async renderTable() {
       this.logDebug('Starting renderTable...');
       this.logDebug('Filtered data length:', this.data.filtered.length);
 
@@ -761,54 +810,73 @@
         return;
       }
 
-      const startTime = performance.now();
-      const fragment = document.createDocumentFragment();
+      // Only show quick loader if we're not already showing a process loader
+      const shouldShowQuickLoader =
+        !this.state.currentProcessLoader && !this.state.isLoading;
 
-      // Create table structure
-      const table = document.createElement('table');
-      table.className = 'excel-editor-table table is-fullwidth is-striped';
-      table.id = 'excel-table';
+      if (shouldShowQuickLoader) {
+        this.showQuickLoader('Updating table...');
+      }
 
-      this.logDebug('Creating table header...');
-      // Create header
-      const thead = this.createTableHeader();
-      table.appendChild(thead);
+      // Allow UI to update
+      await new Promise((resolve) => setTimeout(resolve, 30));
 
-      this.logDebug('Creating table body...');
-      // Create body
-      const tbody = this.createTableBody();
-      this.logDebug('Body rows count:', tbody.children.length);
-      table.appendChild(tbody);
+      try {
+        const startTime = performance.now();
+        const fragment = document.createDocumentFragment();
 
-      fragment.appendChild(table);
+        // Create table structure
+        const table = document.createElement('table');
+        table.className = 'excel-editor-table table is-fullwidth is-striped';
+        table.id = 'excel-table';
 
-      this.logDebug('Replacing table content...');
-      // Replace table content
-      this.elements.tableContainer.html('');
-      this.elements.tableContainer.append(fragment);
+        this.logDebug('Creating table header...');
+        // Create header
+        const thead = this.createTableHeader();
+        table.appendChild(thead);
 
-      // Re-cache table element
-      this.elements.table = $('#excel-table');
+        this.logDebug('Creating table body...');
+        // Create body
+        const tbody = this.createTableBody();
+        this.logDebug('Body rows count:', tbody.children.length);
+        table.appendChild(tbody);
 
-      // IMPORTANT: Rebind table events after recreation
-      this.bindTableEvents();
+        fragment.appendChild(table);
 
-      const endTime = performance.now();
-      this.logDebug(`Table rendered in ${(endTime - startTime).toFixed(2)}ms`);
+        this.logDebug('Replacing table content...');
+        // Replace table content
+        this.elements.tableContainer.html('');
+        this.elements.tableContainer.append(fragment);
 
-      // Apply row styling based on actions
-      this.applyRowStyling();
+        // Re-cache table element
+        this.elements.table = $('#excel-table');
 
-      // Debug: Check if filter links were created properly
-      console.log(
-        '[Excel Editor] Filter links after table render:',
-        $('.filter-link').length
-      );
-      $('.filter-link').each(function (index) {
-        console.log(`Filter link ${index}:`, $(this).data('column'));
-      });
+        // IMPORTANT: Rebind table events after recreation
+        this.bindTableEvents();
 
-      this.logDebug('Table rendering complete!');
+        const endTime = performance.now();
+        this.logDebug(
+          `Table rendered in ${(endTime - startTime).toFixed(2)}ms`
+        );
+
+        // Apply row styling based on actions
+        this.applyRowStyling();
+
+        // Debug: Check if filter links were created properly
+        console.log(
+          '[Excel Editor] Filter links after table render:',
+          $('.filter-link').length
+        );
+        $('.filter-link').each(function (index) {
+          console.log(`Filter link ${index}:`, $(this).data('column'));
+        });
+
+        this.logDebug('Table rendering complete!');
+      } finally {
+        if (shouldShowQuickLoader) {
+          this.hideQuickLoader();
+        }
+      }
     }
 
     /**
@@ -1048,7 +1116,8 @@
       const $cell = $(e.target);
       const rowIndex = parseInt($cell.data('row'));
       const colIndex = parseInt($cell.data('col'));
-      const newValue = $cell.val();
+      // Trim the input value to prevent whitespace issues
+      const newValue = String($cell.val() || '').trim();
 
       // Update data
       this.data.filtered[rowIndex][colIndex] = newValue;
@@ -1123,6 +1192,37 @@
       } else {
         $selectAllCheckbox.prop('checked', false).prop('indeterminate', true);
       }
+    }
+
+    /**
+     * Clean existing data by trimming all cell values.
+     */
+    cleanExistingData() {
+      if (!this.data.original || !this.data.original.length) {
+        console.log('No data to clean');
+        return;
+      }
+
+      console.log('Cleaning existing data by trimming all cell values...');
+
+      // Clean original data
+      this.data.original = this.data.original.map((row) => {
+        if (!Array.isArray(row)) return row;
+        return row.map((cell) => String(cell || '').trim());
+      });
+
+      // Clean filtered data
+      this.data.filtered = this.data.filtered.map((row) => {
+        if (!Array.isArray(row)) return row;
+        return row.map((cell) => String(cell || '').trim());
+      });
+
+      // Re-render everything
+      this.renderTable();
+      this.setupFilters();
+
+      console.log('Data cleaning complete!');
+      this.showMessage('Data cleaned - all cell values trimmed', 'success');
     }
 
     /**
@@ -1372,36 +1472,61 @@
       const header = this.data.filtered[0][columnIndex];
       console.log('[Excel Editor] Creating filter for column:', header);
 
-      const uniqueValues = this.getUniqueColumnValues(columnIndex);
-      console.log(
-        '[Excel Editor] Unique values for column:',
-        uniqueValues.length,
-        'values'
-      );
+      // Show loader while getting unique values
+      this.showQuickLoader('Loading filter options...');
 
-      // Remove any existing filter modals
-      $('.modal#filter-modal').remove();
-      console.log('[Excel Editor] Removed existing modals');
+      // Use setTimeout to allow loader to show
+      setTimeout(() => {
+        try {
+          const uniqueValues = this.getUniqueColumnValues(columnIndex);
+          console.log(
+            '[Excel Editor] Unique values for column:',
+            uniqueValues.length,
+            'values'
+          );
 
-      // Create modal HTML
-      const optionsHtml = uniqueValues
-        .map(
-          (val) =>
-            `<option value="${this.escapeHtml(val)}">${this.escapeHtml(
-              val || '(empty)'
-            )}</option>`
-        )
-        .join('');
+          // Remove any existing filter modals
+          $('.modal#filter-modal').remove();
+          console.log('[Excel Editor] Removed existing modals');
 
-      const modalHtml = `
+          // Create checkbox options HTML
+          const checkboxOptionsHtml = uniqueValues
+            .map((val, index) => {
+              const value = val || '';
+              const displayValue = value === '' ? '(empty)' : value;
+              const isChecked = this.isValueSelectedInFilter(
+                columnIndex,
+                value
+              );
+
+              return `
+            <div class="column is-half">
+              <label class="checkbox filter-checkbox-item">
+                <input type="checkbox"
+                       value="${this.escapeHtml(value)}"
+                       ${isChecked ? 'checked' : ''}
+                       class="filter-value-checkbox">
+                <span class="filter-checkbox-label">${this.escapeHtml(
+                  displayValue
+                )}</span>
+              </label>
+            </div>
+          `;
+            })
+            .join('');
+
+          const modalHtml = `
         <div class="modal is-active" id="filter-modal" style="display: flex !important; z-index: 9999;">
           <div class="modal-background"></div>
           <div class="modal-content">
             <div class="box">
-              <h3 class="title is-4">Filter: ${this.escapeHtml(header)}</h3>
-              <p><strong>Debug:</strong> Column ${columnIndex} with ${
-        uniqueValues.length
-      } unique values</p>
+              <h3 class="title is-4">
+                <span class="icon"><i class="fas fa-filter"></i></span>
+                Filter: ${this.escapeHtml(header)}
+              </h3>
+              <p class="subtitle is-6">Column ${columnIndex + 1} with ${
+            uniqueValues.length
+          } unique values</p>
 
               <div class="tabs" id="filter-tabs">
                 <ul>
@@ -1410,18 +1535,46 @@
                 </ul>
               </div>
 
-              <!-- Quick Filter Tab -->
+              <!-- Quick Filter Tab with Checkboxes -->
               <div class="tab-content" id="quick-filter-tab">
                 <div class="field">
-                  <label class="label">Select Values to Show:</label>
-                  <div class="control">
-                    <div class="select is-multiple is-fullwidth">
-                      <select multiple size="8" id="quick-filter-select">
-                        ${optionsHtml}
-                      </select>
+                  <div class="field is-grouped is-grouped-multiline mb-3">
+                    <div class="control">
+                      <button class="button is-small is-info" id="select-all-values">
+                        <span class="icon is-small"><i class="fas fa-check-square"></i></span>
+                        <span>Select All</span>
+                      </button>
+                    </div>
+                    <div class="control">
+                      <button class="button is-small is-light" id="deselect-all-values">
+                        <span class="icon is-small"><i class="fas fa-square"></i></span>
+                        <span>Deselect All</span>
+                      </button>
+                    </div>
+                    <div class="control">
+                      <button class="button is-small is-warning" id="invert-selection">
+                        <span class="icon is-small"><i class="fas fa-exchange-alt"></i></span>
+                        <span>Invert Selection</span>
+                      </button>
                     </div>
                   </div>
-                  <p class="help">Hold Ctrl/Cmd to select multiple values</p>
+
+                  <div class="field">
+                    <input class="input is-small" type="text" id="filter-search"
+                           placeholder="Search values..." />
+                  </div>
+
+                  <div class="filter-values-container" style="max-height: 300px; overflow-y: auto; border: 1px solid #dbdbdb; border-radius: 4px; padding: 1rem;">
+                    <div class="columns is-multiline" id="filter-checkboxes">
+                      ${checkboxOptionsHtml}
+                    </div>
+                  </div>
+
+                  <p class="help mt-2">
+                    <span id="selected-count">0</span> of ${
+                      uniqueValues.length
+                    } values selected
+                  </p>
                 </div>
               </div>
 
@@ -1477,43 +1630,75 @@
         </div>
       `;
 
-      console.log('[Excel Editor] Creating modal jQuery object');
-      const modal = $(modalHtml);
+          console.log('[Excel Editor] Creating modal jQuery object');
+          const modal = $(modalHtml);
 
-      console.log('[Excel Editor] Appending modal to body');
-      $('body').append(modal);
+          console.log('[Excel Editor] Appending modal to body');
+          $('body').append(modal);
 
-      // Verify modal was added and is visible
-      const $modalCheck = $('#filter-modal');
-      console.log('[Excel Editor] Modal verification:', {
-        found: $modalCheck.length,
-        isVisible: $modalCheck.is(':visible'),
-        hasClass: $modalCheck.hasClass('is-active'),
-        display: $modalCheck.css('display'),
-        zIndex: $modalCheck.css('z-index'),
-      });
+          // Verify modal was added and is visible
+          const $modalCheck = $('#filter-modal');
+          console.log('[Excel Editor] Modal verification:', {
+            found: $modalCheck.length,
+            isVisible: $modalCheck.is(':visible'),
+            hasClass: $modalCheck.hasClass('is-active'),
+            display: $modalCheck.css('display'),
+            zIndex: $modalCheck.css('z-index'),
+          });
 
-      // Force visibility if needed
-      if (!$modalCheck.is(':visible')) {
-        console.log('[Excel Editor] Modal not visible, forcing display');
-        $modalCheck
-          .css({
-            display: 'flex !important',
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            'z-index': '9999',
-          })
-          .addClass('is-active')
-          .show();
+          // Force visibility if needed
+          if (!$modalCheck.is(':visible')) {
+            console.log('[Excel Editor] Modal not visible, forcing display');
+            $modalCheck
+              .css({
+                display: 'flex !important',
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                'z-index': '9999',
+              })
+              .addClass('is-active')
+              .show();
+          }
+
+          console.log('[Excel Editor] Binding modal events');
+          this.bindFilterModalEvents(modal, columnIndex, header);
+
+          // Update selected count
+          this.updateFilterSelectedCount(modal);
+
+          console.log('[Excel Editor] showColumnFilter completed');
+        } finally {
+          this.hideQuickLoader();
+        }
+      }, 100);
+    }
+
+    /**
+     * Update the selected count in filter modal
+     */
+    updateFilterSelectedCount(modal) {
+      const checkedBoxes = modal.find('.filter-value-checkbox:checked');
+      const totalBoxes = modal.find('.filter-value-checkbox');
+
+      modal.find('#selected-count').text(checkedBoxes.length);
+
+      // Update select/deselect all button states
+      const selectAllBtn = modal.find('#select-all-values');
+      const deselectAllBtn = modal.find('#deselect-all-values');
+
+      if (checkedBoxes.length === 0) {
+        selectAllBtn.removeClass('is-light').addClass('is-info');
+        deselectAllBtn.removeClass('is-info').addClass('is-light');
+      } else if (checkedBoxes.length === totalBoxes.length) {
+        selectAllBtn.removeClass('is-info').addClass('is-light');
+        deselectAllBtn.removeClass('is-light').addClass('is-info');
+      } else {
+        selectAllBtn.removeClass('is-light').addClass('is-info');
+        deselectAllBtn.removeClass('is-light').addClass('is-info');
       }
-
-      console.log('[Excel Editor] Binding modal events');
-      this.bindFilterModalEvents(modal, columnIndex, header);
-
-      console.log('[Excel Editor] showColumnFilter completed');
     }
 
     /**
@@ -1650,36 +1835,45 @@
     }
 
     /**
-     * Apply column visibility changes from modal
+     * Apply column visibility changes from modal with loader
      */
-    applyColumnVisibilityChanges(modal) {
-      // Update hidden columns set
-      this.state.hiddenColumns.clear();
+    async applyColumnVisibilityChanges(modal) {
+      this.showProcessLoader('Updating column visibility...');
 
-      modal.find('.column-visibility-checkbox').each((index, checkbox) => {
-        const colIndex = parseInt($(checkbox).data('column-index'));
-        const isChecked = $(checkbox).is(':checked');
+      // Allow UI to update
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
-        if (!isChecked) {
-          this.state.hiddenColumns.add(colIndex);
+      try {
+        // Update hidden columns set
+        this.state.hiddenColumns.clear();
+
+        modal.find('.column-visibility-checkbox').each((index, checkbox) => {
+          const colIndex = parseInt($(checkbox).data('column-index'));
+          const isChecked = $(checkbox).is(':checked');
+
+          if (!isChecked) {
+            this.state.hiddenColumns.add(colIndex);
+          }
+        });
+
+        // Re-render table and filters
+        await this.renderTable();
+        this.setupFilters();
+
+        // Show feedback message
+        const hiddenCount = this.state.hiddenColumns.size;
+        if (hiddenCount > 0) {
+          this.showMessage(
+            `${hiddenCount} column${
+              hiddenCount !== 1 ? 's' : ''
+            } hidden from view`,
+            'info'
+          );
+        } else {
+          this.showMessage('All columns are now visible', 'success');
         }
-      });
-
-      // Re-render table and filters
-      this.renderTable();
-      this.setupFilters();
-
-      // Show feedback message
-      const hiddenCount = this.state.hiddenColumns.size;
-      if (hiddenCount > 0) {
-        this.showMessage(
-          `${hiddenCount} column${
-            hiddenCount !== 1 ? 's' : ''
-          } hidden from view`,
-          'info'
-        );
-      } else {
-        this.showMessage('All columns are now visible', 'success');
+      } finally {
+        this.hideProcessLoader();
       }
     }
 
@@ -1711,6 +1905,22 @@
     }
 
     /**
+     * Check if a value is currently selected in the filter
+     */
+    isValueSelectedInFilter(columnIndex, value) {
+      if (!this.state.currentFilters[columnIndex]) {
+        return true; // If no filter, show all as selected
+      }
+
+      const filter = this.state.currentFilters[columnIndex];
+      if (filter.type === 'quick' && filter.selected) {
+        return filter.selected.includes(value);
+      }
+
+      return false;
+    }
+
+    /**
      * Show all columns override
      */
     showAllColumnsOverride() {
@@ -1728,8 +1938,10 @@
 
       // Skip header row (index 0)
       for (let i = 1; i < this.data.filtered.length; i++) {
-        const value = this.data.filtered[i][columnIndex];
-        values.add(value || '');
+        const rawValue = this.data.filtered[i][columnIndex];
+        // Trim the value to prevent duplicates from whitespace
+        const trimmedValue = String(rawValue || '').trim();
+        values.add(trimmedValue);
       }
 
       return Array.from(values).sort();
@@ -1739,17 +1951,6 @@
      * Bind filter modal events
      */
     bindFilterModalEvents(modal, columnIndex, header) {
-      // Initialize multi-select if available
-      const $selectElement = modal.find('#quick-filter-select');
-
-      // Pre-select current filter if exists
-      if (this.state.currentFilters[columnIndex]) {
-        const currentFilter = this.state.currentFilters[columnIndex];
-        if (currentFilter.selected && Array.isArray(currentFilter.selected)) {
-          $selectElement.val(currentFilter.selected);
-        }
-      }
-
       // Tab switching
       modal.find('[data-tab]').on('click', (e) => {
         e.preventDefault();
@@ -1760,6 +1961,45 @@
 
         modal.find('.tab-content').hide();
         modal.find(`#${tabName}-filter-tab`).show();
+      });
+
+      // Checkbox change events
+      modal.find('.filter-value-checkbox').on('change', () => {
+        this.updateFilterSelectedCount(modal);
+      });
+
+      // Select all values
+      modal.find('#select-all-values').on('click', () => {
+        modal.find('.filter-value-checkbox').prop('checked', true);
+        this.updateFilterSelectedCount(modal);
+      });
+
+      // Deselect all values
+      modal.find('#deselect-all-values').on('click', () => {
+        modal.find('.filter-value-checkbox').prop('checked', false);
+        this.updateFilterSelectedCount(modal);
+      });
+
+      // Invert selection
+      modal.find('#invert-selection').on('click', () => {
+        modal.find('.filter-value-checkbox').each(function () {
+          $(this).prop('checked', !$(this).prop('checked'));
+        });
+        this.updateFilterSelectedCount(modal);
+      });
+
+      // Search functionality
+      modal.find('#filter-search').on('input', (e) => {
+        const searchTerm = $(e.target).val().toLowerCase();
+
+        modal.find('.filter-checkbox-item').each(function () {
+          const label = $(this)
+            .find('.filter-checkbox-label')
+            .text()
+            .toLowerCase();
+          const shouldShow = label.includes(searchTerm);
+          $(this).closest('.column').toggle(shouldShow);
+        });
       });
 
       // Filter type changes
@@ -1782,17 +2022,23 @@
         });
 
       // Clear filter
-      modal.find('#clear-column-filter').on('click', () => {
-        delete this.state.currentFilters[columnIndex];
-        this.applyFilters();
-        this.updateActiveFiltersDisplay();
-        modal.remove();
-        this.showMessage(`Filter cleared for ${header}`, 'success');
+      modal.find('#clear-column-filter').on('click', async () => {
+        this.showProcessLoader('Clearing filter...');
+
+        try {
+          delete this.state.currentFilters[columnIndex];
+          await this.applyFilters();
+          this.updateActiveFiltersDisplay();
+          modal.remove();
+          this.showMessage(`Filter cleared for ${header}`, 'success');
+        } finally {
+          this.hideProcessLoader();
+        }
       });
 
       // Apply filter
-      modal.find('#apply-filter').on('click', () => {
-        this.applyFilterFromModal(modal, columnIndex);
+      modal.find('#apply-filter').on('click', async () => {
+        await this.applyFilterFromModal(modal, columnIndex);
         modal.remove();
       });
     }
@@ -1800,99 +2046,122 @@
     /**
      * Apply filter from modal
      */
-    applyFilterFromModal(modal, columnIndex) {
-      const activeTab = modal.find('.tabs .is-active [data-tab]').data('tab');
+    async applyFilterFromModal(modal, columnIndex) {
+      this.showProcessLoader('Applying filter...');
 
-      if (activeTab === 'quick') {
-        // Quick filter using multi-select
-        const selectedValues = modal.find('#quick-filter-select').val() || [];
+      try {
+        const activeTab = modal.find('.tabs .is-active [data-tab]').data('tab');
 
-        if (selectedValues.length > 0) {
-          this.state.currentFilters[columnIndex] = {
-            type: 'quick',
-            selected: selectedValues,
-          };
+        if (activeTab === 'quick') {
+          // Quick filter using checkboxes
+          const selectedValues = [];
+          modal.find('.filter-value-checkbox:checked').each(function () {
+            selectedValues.push($(this).val());
+          });
+
+          if (selectedValues.length > 0) {
+            this.state.currentFilters[columnIndex] = {
+              type: 'quick',
+              selected: selectedValues,
+            };
+          } else {
+            delete this.state.currentFilters[columnIndex];
+          }
         } else {
-          delete this.state.currentFilters[columnIndex];
-        }
-      } else {
-        // Advanced filter
-        const filterType = modal.find('#filter-type').val();
-        const filterValue = modal.find('#filter-value').val();
+          // Advanced filter
+          const filterType = modal.find('#filter-type').val();
+          const filterValue = modal.find('#filter-value').val();
 
-        if (
-          filterType === 'empty' ||
-          filterType === 'not_empty' ||
-          filterValue
-        ) {
-          this.state.currentFilters[columnIndex] = {
-            type: filterType,
-            value: filterValue,
-          };
-        } else {
-          delete this.state.currentFilters[columnIndex];
+          if (
+            filterType === 'empty' ||
+            filterType === 'not_empty' ||
+            filterValue
+          ) {
+            this.state.currentFilters[columnIndex] = {
+              type: filterType,
+              value: filterValue,
+            };
+          } else {
+            delete this.state.currentFilters[columnIndex];
+          }
         }
+
+        await this.applyFilters();
+        this.updateActiveFiltersDisplay();
+
+        const header = this.data.filtered[0][columnIndex];
+        this.showMessage(`Filter applied to ${header}`, 'success');
+      } finally {
+        this.hideProcessLoader();
       }
-
-      this.applyFilters();
-      this.updateActiveFiltersDisplay();
     }
 
     /**
-     * Apply all filters to data
+     * Apply all filters to data with loading indicator
      */
-    applyFilters() {
+    async applyFilters() {
       if (Object.keys(this.state.currentFilters).length === 0) {
         this.data.filtered = this.deepClone(this.data.original);
         this.renderTable();
         return;
       }
 
-      const startTime = performance.now();
+      this.showProcessLoader('Applying filters...');
 
-      // Start with original data
-      this.data.filtered = [this.data.original[0]]; // Keep header
+      // Use setTimeout to allow UI to update before heavy processing
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Filter each row
-      for (let i = 1; i < this.data.original.length; i++) {
-        const row = this.data.original[i];
-        let includeRow = true;
+      try {
+        const startTime = performance.now();
 
-        // Check each filter
-        for (const [columnIndex, filter] of Object.entries(
-          this.state.currentFilters
-        )) {
-          const colIndex = parseInt(columnIndex);
-          const cellValue = row[colIndex] || '';
+        // Start with original data
+        this.data.filtered = [this.data.original[0]]; // Keep header
 
-          if (!this.rowMatchesFilter(cellValue, filter)) {
-            includeRow = false;
-            break;
+        // Filter each row
+        for (let i = 1; i < this.data.original.length; i++) {
+          const row = this.data.original[i];
+          let includeRow = true;
+
+          // Check each filter
+          for (const [columnIndex, filter] of Object.entries(
+            this.state.currentFilters
+          )) {
+            const colIndex = parseInt(columnIndex);
+            const cellValue = row[colIndex] || '';
+
+            if (!this.rowMatchesFilter(cellValue, filter)) {
+              includeRow = false;
+              break;
+            }
+          }
+
+          if (includeRow) {
+            this.data.filtered.push(row);
           }
         }
 
-        if (includeRow) {
-          this.data.filtered.push(row);
-        }
-      }
-
-      const endTime = performance.now();
-      this.logDebug(`Filters applied in ${(endTime - startTime).toFixed(2)}ms`);
-
-      // Clear selection since row indices have changed
-      this.data.selected.clear();
-
-      this.renderTable();
-      this.updateSelectionCount();
-
-      const filteredCount = this.data.filtered.length - 1; // Exclude header
-      const totalCount = this.data.original.length - 1;
-
-      if (filteredCount < totalCount) {
-        this.showMessage(
-          `Showing ${filteredCount} of ${totalCount} rows`,
-          'info'
+        const endTime = performance.now();
+        this.logDebug(
+          `Filters applied in ${(endTime - startTime).toFixed(2)}ms`
         );
+
+        // Clear selection since row indices have changed
+        this.data.selected.clear();
+
+        await this.renderTable();
+        this.updateSelectionCount();
+
+        const filteredCount = this.data.filtered.length - 1; // Exclude header
+        const totalCount = this.data.original.length - 1;
+
+        if (filteredCount < totalCount) {
+          this.showMessage(
+            `Showing ${filteredCount} of ${totalCount} rows`,
+            'info'
+          );
+        }
+      } finally {
+        this.hideProcessLoader();
       }
     }
 
@@ -1900,38 +2169,183 @@
      * Check if a row matches a filter
      */
     rowMatchesFilter(cellValue, filter) {
-      const value = String(cellValue).toLowerCase();
+      // Trim both the cell value and filter value for comparison
+      const value = String(cellValue || '')
+        .trim()
+        .toLowerCase();
 
       switch (filter.type) {
         case 'quick':
-          return filter.selected.includes(cellValue);
+          // Trim the selected values for comparison
+          // eslint-disable-next-line no-case-declarations
+          const trimmedSelected = filter.selected.map((val) =>
+            String(val || '').trim()
+          );
+          return trimmedSelected.includes(String(cellValue || '').trim());
 
         case 'equals':
-          return value === String(filter.value).toLowerCase();
+          return (
+            value ===
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'contains':
-          return value.includes(String(filter.value).toLowerCase());
+          return value.includes(
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'starts':
-          return value.startsWith(String(filter.value).toLowerCase());
+          return value.startsWith(
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'ends':
-          return value.endsWith(String(filter.value).toLowerCase());
+          return value.endsWith(
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'not_equals':
-          return value !== String(filter.value).toLowerCase();
+          return (
+            value !==
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'not_contains':
-          return !value.includes(String(filter.value).toLowerCase());
+          return !value.includes(
+            String(filter.value || '')
+              .trim()
+              .toLowerCase()
+          );
 
         case 'empty':
-          return !cellValue || cellValue.toString().trim() === '';
+          return !cellValue || String(cellValue).trim() === '';
 
         case 'not_empty':
-          return cellValue && cellValue.toString().trim() !== '';
+          return cellValue && String(cellValue).trim() !== '';
 
         default:
           return true;
+      }
+    }
+
+    /**
+     * Enhanced debug logging specifically for draft operations
+     */
+    logDraftDebug(operation, data = null) {
+      const isDraftDebug =
+        this.config.settings.debug ||
+        window.location.search.includes('debug=1') ||
+        localStorage.getItem('excel_editor_debug') === 'true' ||
+        localStorage.getItem('excel_editor_draft_debug') === 'true';
+
+      if (isDraftDebug) {
+        console.log(`[Excel Editor - Drafts] ${operation}`, data);
+      }
+    }
+
+    /**
+     * Show process-specific loading overlay
+     */
+    showProcessLoader(message = 'Processing...', target = null) {
+      // Remove any existing process loaders
+      this.hideProcessLoader();
+
+      const loaderId = 'process-loader-' + Date.now();
+      const loader = $(`
+        <div class="excel-editor-overlay-loader" id="${loaderId}">
+          <div class="loading-content">
+            <div class="excel-editor-spinner"></div>
+            <p><strong>${this.escapeHtml(message)}</strong></p>
+          </div>
+        </div>
+      `);
+
+      // Append to body for full-screen coverage
+      $('body').append(loader);
+      this.state.currentProcessLoader = loaderId;
+
+      this.logDebug('Process loader shown:', message);
+    }
+
+    /**
+     * Hide process-specific loading overlay
+     */
+    hideProcessLoader() {
+      if (this.state.currentProcessLoader) {
+        $(`#${this.state.currentProcessLoader}`).remove();
+        this.state.currentProcessLoader = null;
+      }
+      // Also remove any stray loaders
+      $('.excel-editor-overlay-loader').remove();
+
+      this.logDebug('Process loader hidden');
+    }
+
+    /**
+     * Clear all loaders as a safety net
+     */
+    clearAllLoaders() {
+      this.logDebug('Clearing all loaders...');
+
+      // Hide main loading
+      this.hideLoading();
+
+      // Hide process loader
+      this.hideProcessLoader();
+
+      // Hide quick loader
+      this.hideQuickLoader();
+
+      // Remove any remaining loader elements
+      $('.excel-editor-loading').removeClass('active').hide();
+      $('.excel-editor-overlay-loader').remove();
+      $('.excel-editor-quick-loader').remove();
+
+      // Reset state
+      this.state.currentProcessLoader = null;
+      this.state.isLoading = false;
+
+      this.logDebug('All loaders cleared');
+    }
+
+    /**
+     * Show quick notification loader (top-right corner)
+     */
+    showQuickLoader(message = 'Working...') {
+      this.hideQuickLoader();
+
+      const loader = $(`
+        <div class="excel-editor-quick-loader" id="quick-loader">
+          <div class="spinner"></div>
+          <span>${this.escapeHtml(message)}</span>
+        </div>
+      `);
+
+      $('body').append(loader);
+
+      setTimeout(() => {
+        loader.addClass('slide-in');
+      }, 10);
+    }
+
+    /**
+     * Hide quick notification loader
+     */
+    hideQuickLoader() {
+      const loader = $('#quick-loader');
+      if (loader.length) {
+        loader.addClass('slide-out');
+        setTimeout(() => loader.remove(), 300);
       }
     }
 
@@ -2023,13 +2437,22 @@
       try {
         this.showLoading('Saving draft...');
 
+        // Prepare draft data
         const draftData = {
+          name: `Draft ${new Date().toLocaleString()}`, // Add a default name
           data: this.data.original,
           filters: this.state.currentFilters,
           hiddenColumns: Array.from(this.state.hiddenColumns),
           selected: Array.from(this.data.selected),
           timestamp: new Date().toISOString(),
         };
+
+        this.logDebug('Saving draft data:', {
+          dataRows: draftData.data.length,
+          filtersCount: Object.keys(draftData.filters).length,
+          hiddenColumnsCount: draftData.hiddenColumns.length,
+          selectedRowsCount: draftData.selected.length,
+        });
 
         const response = await this.apiCall(
           'POST',
@@ -2045,10 +2468,93 @@
           throw new Error(response.message || 'Failed to save draft');
         }
       } catch (error) {
-        this.handleError('Failed to save draft', error);
+        console.error('Save draft error details:', error);
+
+        // Provide more helpful error messages
+        let userMessage = 'Failed to save draft: ';
+
+        if (error.message.includes('Access denied')) {
+          userMessage +=
+            'You do not have permission to save drafts. Please check with your administrator.';
+        } else if (error.message.includes('Endpoint not found')) {
+          userMessage +=
+            'The save functionality is not properly configured. Please contact support.';
+        } else if (
+          error.message.includes('CSRF') ||
+          error.message.includes('token')
+        ) {
+          userMessage +=
+            'Security token expired. Please refresh the page and try again.';
+        } else if (error.message.includes('non-JSON response')) {
+          userMessage += 'Server configuration issue. Please contact support.';
+        } else {
+          userMessage += error.message;
+        }
+
+        this.handleError(userMessage, error);
       } finally {
         this.hideLoading();
       }
+    }
+
+    /**
+     * Test API endpoints (can be called from console)
+     */
+    async testApiEndpoints() {
+      console.log('=== TESTING API ENDPOINTS ===');
+
+      // Test CSRF token
+      console.log('CSRF Token:', this.csrfToken ? 'Available' : 'Missing');
+      if (!this.csrfToken) {
+        console.log('Attempting to get CSRF token...');
+        await this.getCsrfToken();
+        console.log(
+          'CSRF Token after request:',
+          this.csrfToken ? 'Available' : 'Still missing'
+        );
+      }
+
+      // Test endpoints configuration
+      console.log('Configured endpoints:', this.config.endpoints);
+
+      // Test list drafts (GET request - should work without CSRF)
+      try {
+        console.log('Testing list drafts...');
+        const draftsResponse = await this.apiCall(
+          'GET',
+          this.config.endpoints.listDrafts
+        );
+        console.log('List drafts response:', draftsResponse);
+      } catch (error) {
+        console.error('List drafts failed:', error.message);
+      }
+
+      // Test save draft with minimal data
+      try {
+        console.log('Testing save draft...');
+        const testData = {
+          name: 'Test Draft',
+          data: [
+            ['header1', 'header2'],
+            ['test1', 'test2'],
+          ],
+          filters: {},
+          hiddenColumns: [],
+          selected: [],
+          timestamp: new Date().toISOString(),
+        };
+
+        const saveResponse = await this.apiCall(
+          'POST',
+          this.config.endpoints.saveDraft,
+          testData
+        );
+        console.log('Save draft response:', saveResponse);
+      } catch (error) {
+        console.error('Save draft failed:', error.message);
+      }
+
+      console.log('=== END API TEST ===');
     }
 
     /**
@@ -2147,9 +2653,17 @@
 
         if (response.success && response.drafts) {
           this.renderDrafts(response.drafts);
+        } else if (response.drafts) {
+          // Handle case where success flag might be missing but we have drafts
+          this.renderDrafts(response.drafts);
+        } else {
+          this.logDebug('No drafts returned from server');
+          this.renderDrafts([]);
         }
       } catch (error) {
-        this.logDebug('Failed to load drafts', error);
+        this.logDebug('Failed to load drafts:', error);
+        // Don't show error message for drafts loading failure - just log it
+        this.renderDrafts([]);
       }
     }
 
@@ -2322,25 +2836,99 @@
      * Make API calls with error handling
      */
     async apiCall(method, url, data = null) {
+      // Ensure we have CSRF token for write operations
+      if (
+        (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+        !this.csrfToken
+      ) {
+        await this.getCsrfToken();
+      }
+
       const options = {
         method: method,
         headers: {
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
         },
+        credentials: 'same-origin', // Include cookies for session
       };
+
+      // Add CSRF token for write operations
+      if (
+        (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+        this.csrfToken
+      ) {
+        options.headers['X-CSRF-Token'] = this.csrfToken;
+      }
 
       if (data) {
         options.body = JSON.stringify(data);
       }
 
-      const response = await fetch(url, options);
+      this.logDebug('Making API call:', {
+        method,
+        url,
+        hasData: !!data,
+        hasCsrf: !!this.csrfToken,
+      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      try {
+        const response = await fetch(url, options);
+
+        this.logDebug('API response status:', response.status);
+
+        if (!response.ok) {
+          // Try to get error details from response
+          let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+          try {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const errorData = await response.json();
+              if (errorData.message) {
+                errorMessage = errorData.message;
+              }
+            } else {
+              // If it's HTML, we're probably getting an error page
+              const htmlText = await response.text();
+              if (
+                htmlText.includes('<!DOCTYPE') ||
+                htmlText.includes('<html')
+              ) {
+                if (response.status === 403) {
+                  errorMessage = 'Access denied. Please check permissions.';
+                } else if (response.status === 404) {
+                  errorMessage =
+                    'Endpoint not found. Please check module routing.';
+                } else {
+                  errorMessage = `Server returned an error page (${response.status})`;
+                }
+              }
+            }
+          } catch (parseError) {
+            this.logDebug('Could not parse error response:', parseError);
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const result = await response.json();
+          this.logDebug('API response data:', result);
+          return result;
+        } else {
+          // If we're not getting JSON, something is wrong
+          const text = await response.text();
+          this.logDebug('Non-JSON response received:', text.substring(0, 200));
+          throw new Error(
+            'Server returned non-JSON response. Check if the endpoint is configured correctly.'
+          );
+        }
+      } catch (error) {
+        this.logDebug('API call failed:', error);
+        throw error;
       }
-
-      return await response.json();
     }
 
     /**

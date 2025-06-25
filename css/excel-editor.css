@@ -326,17 +326,6 @@
 
 /* Overlay loader styles */
 .excel-editor-overlay-loader {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background: rgba(255, 255, 255, 0.9) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 1000 !important;
-  border-radius: 4px !important;
   backdrop-filter: blur(1px);
 }
 
@@ -512,5 +501,441 @@
   .excel-editor-overlay-loader .loading-content {
     padding: 1.5rem;
     margin: 0 1rem;
+  }
+}
+
+/* Process overlay loader - centered on full screen */
+.excel-editor-overlay-loader {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 9998 !important;
+  backdrop-filter: blur(3px);
+  animation: loaderFadeIn 0.2s ease-out;
+}
+
+.excel-editor-overlay-loader .loading-content {
+  text-align: center;
+  padding: 3rem 2.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid #e9ecef;
+  max-width: 400px;
+  min-width: 300px;
+  transform: scale(0.9);
+  animation: loaderScaleIn 0.3s ease-out forwards;
+}
+
+.excel-editor-overlay-loader .loading-content p {
+  margin: 1rem 0 0 0;
+  color: #495057;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+/* Quick notification loader (top-right) */
+.excel-editor-quick-loader {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  background: linear-gradient(135deg, #007bff, #0056b3) !important;
+  color: white !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 123, 255, 0.4) !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  min-width: 150px !important;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.3s ease-out;
+}
+
+.excel-editor-quick-loader.slide-in {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.excel-editor-quick-loader.slide-out {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+/* Enhanced spinner animations */
+.excel-editor-spinner {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  border: 3px solid #f3f3f3 !important;
+  border-top: 3px solid #007bff !important;
+  border-radius: 50% !important;
+  animation: excel-editor-spin 1s linear infinite !important;
+  margin: 0 auto 1rem auto !important;
+}
+
+/* Small spinner for quick loader */
+.excel-editor-quick-loader .spinner {
+  width: 1rem !important;
+  height: 1rem !important;
+  border: 2px solid rgba(255, 255, 255, 0.3) !important;
+  border-top: 2px solid white !important;
+  border-radius: 50% !important;
+  animation: excel-editor-spin 1s linear infinite !important;
+  flex-shrink: 0;
+}
+
+@keyframes excel-editor-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Loader animation keyframes */
+@keyframes loaderFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes loaderScaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Filter modal enhancements */
+#filter-modal {
+  z-index: 9999 !important;
+}
+
+#filter-modal .modal-content {
+  max-width: 700px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#filter-modal .box {
+  margin: 0;
+}
+
+/* Filter checkbox styling */
+.filter-checkbox-item {
+  display: flex !important;
+  align-items: flex-start !important;
+  margin-bottom: 0.5rem !important;
+  padding: 0.5rem !important;
+  border-radius: 4px !important;
+  transition: background-color 0.2s ease !important;
+  cursor: pointer !important;
+  word-break: break-word !important;
+}
+
+.filter-checkbox-item:hover {
+  background-color: #f8f9fa !important;
+}
+
+.filter-checkbox-item input[type="checkbox"] {
+  margin-right: 0.75rem !important;
+  margin-top: 0.125rem !important;
+  flex-shrink: 0 !important;
+}
+
+.filter-checkbox-label {
+  font-size: 0.875rem !important;
+  line-height: 1.4 !important;
+  color: #495057 !important;
+  user-select: none !important;
+}
+
+/* Filter values container */
+.filter-values-container {
+  background: #fafafa;
+  border: 1px solid #e9ecef !important;
+  border-radius: 6px !important;
+  padding: 1rem !important;
+  max-height: 350px !important;
+  overflow-y: auto !important;
+}
+
+.filter-values-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.filter-values-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.filter-values-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.filter-values-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Filter search input */
+#filter-search {
+  border: 1px solid #dbdbdb !important;
+  border-radius: 4px !important;
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.875rem !important;
+  transition: border-color 0.2s ease !important;
+}
+
+#filter-search:focus {
+  border-color: #007bff !important;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25) !important;
+  outline: none !important;
+}
+
+/* Filter modal tabs enhancement */
+#filter-modal .tabs {
+  margin-bottom: 1.5rem !important;
+}
+
+#filter-modal .tabs li a {
+  padding: 0.75rem 1rem !important;
+  border-radius: 4px 4px 0 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+#filter-modal .tabs li.is-active a {
+  background-color: #007bff !important;
+  color: white !important;
+  border-color: #007bff !important;
+}
+
+/* Filter control buttons */
+.filter-control-buttons {
+  margin-bottom: 1rem !important;
+}
+
+.filter-control-buttons .button {
+  margin-right: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Selected count indicator */
+#selected-count {
+  font-weight: 600 !important;
+  color: #007bff !important;
+}
+
+/* Filter modal actions */
+#filter-modal .field.is-grouped-right {
+  margin-top: 2rem !important;
+  padding-top: 1rem !important;
+  border-top: 1px solid #e9ecef !important;
+}
+
+#filter-modal .field.is-grouped-right .button {
+  margin-left: 0.5rem !important;
+}
+
+/* Advanced filter specific styles */
+#advanced-filter-tab .field {
+  margin-bottom: 1.5rem !important;
+}
+
+#advanced-filter-tab .label {
+  font-weight: 600 !important;
+  color: #495057 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+#advanced-filter-tab .select select,
+#advanced-filter-tab .input {
+  border: 1px solid #dbdbdb !important;
+  border-radius: 4px !important;
+  padding: 0.5rem 0.75rem !important;
+  font-size: 0.875rem !important;
+  transition: border-color 0.2s ease !important;
+}
+
+#advanced-filter-tab .select select:focus,
+#advanced-filter-tab .input:focus {
+  border-color: #007bff !important;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25) !important;
+  outline: none !important;
+}
+
+/* Column visibility modal enhancements */
+#column-visibility-modal .column-checkboxes {
+  max-height: 400px !important;
+  overflow-y: auto !important;
+  border: 1px solid #e9ecef !important;
+  border-radius: 6px !important;
+  padding: 1rem !important;
+  background: #fafafa !important;
+}
+
+#column-visibility-modal .column-visibility-checkbox {
+  margin-right: 0.75rem !important;
+}
+
+#column-visibility-modal .column-name {
+  font-size: 0.875rem !important;
+  line-height: 1.4 !important;
+  margin-left: 0 !important;
+}
+
+#column-visibility-modal .tag {
+  margin-left: 0.5rem !important;
+  font-size: 0.75rem !important;
+}
+
+/* Responsive design for loaders */
+@media (max-width: 768px) {
+  .excel-editor-quick-loader {
+    top: 10px !important;
+    right: 10px !important;
+    left: 10px !important;
+    font-size: 0.8rem !important;
+    padding: 0.5rem 0.75rem !important;
+    min-width: auto !important;
+  }
+
+  .excel-editor-overlay-loader .loading-content {
+    padding: 2rem 1.5rem;
+    margin: 0 1rem;
+    min-width: auto;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .excel-editor-overlay-loader .loading-content p {
+    font-size: 0.9rem;
+  }
+
+  .excel-editor-spinner {
+    width: 2rem !important;
+    height: 2rem !important;
+  }
+
+  #filter-modal .modal-content {
+    width: 95vw;
+    max-height: 95vh;
+    margin: 2.5vh auto;
+  }
+
+  .filter-values-container {
+    max-height: 250px !important;
+  }
+
+  .filter-checkbox-item {
+    padding: 0.4rem !important;
+    margin-bottom: 0.3rem !important;
+  }
+
+  .filter-checkbox-label {
+    font-size: 0.8rem !important;
+  }
+
+  #column-visibility-modal .column-checkboxes {
+    max-height: 300px !important;
+  }
+}
+
+/* Loading state indicators for buttons */
+.button.is-loading-custom {
+  position: relative !important;
+  pointer-events: none !important;
+  opacity: 0.7 !important;
+}
+
+.button.is-loading-custom::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 1rem !important;
+  height: 1rem !important;
+  border: 2px solid transparent !important;
+  border-top-color: currentColor !important;
+  border-radius: 50% !important;
+  animation: excel-editor-spin 1s linear infinite !important;
+}
+
+/* Filter link styling in table headers */
+.excel-editor-table th .filter-link {
+  color: #007bff !important;
+  text-decoration: none !important;
+  font-size: 0.75rem !important;
+  font-weight: normal !important;
+  transition: color 0.2s ease !important;
+}
+
+.excel-editor-table th .filter-link:hover {
+  color: #0056b3 !important;
+  text-decoration: underline !important;
+}
+
+/* Active filters indicator */
+.excel-editor-table th.has-filter {
+  background-color: #e3f2fd !important;
+  border-left: 3px solid #007bff !important;
+}
+
+.excel-editor-table th.has-filter .filter-link {
+  font-weight: 600 !important;
+  color: #0056b3 !important;
+}
+
+/* Animation for filter application */
+.excel-editor-table.filtering {
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.excel-editor-table.filtering tbody tr {
+  animation: filterFadeIn 0.3s ease-in-out;
+}
+
+@keyframes filterFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Success/info message styling for filter operations */
+.notification.filter-operation {
+  animation: slideDownNotification 0.3s ease-out;
+}
+
+@keyframes slideDownNotification {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
