@@ -1413,7 +1413,7 @@
                     <p class="help mt-2"><span id="selected-count">0</span> of ${
                       uniqueValues.length
                     } values selected</p>
-                    <div class="field is-grouped is-grouped-right">
+                    <div class="field is-grouped is-grouped-right buttons">
                       <div class="control"><button class="button" id="clear-column-filter">Clear Filter</button></div>
                       <div class="control"><button class="button" id="cancel-filter">Cancel</button></div>
                       <div class="control"><button class="button is-primary" id="apply-filter">Apply Filter</button></div>
@@ -1783,7 +1783,7 @@
         })
         .join('');
 
-      return `<div class="modal is-active" id="column-visibility-modal"><div class="modal-background"></div><div class="modal-content"><div class="box"><h3 class="title is-4">Manage Column Visibility</h3><div class="field is-grouped"><button class="button is-small" id="show-all-columns">Show All</button><button class="button is-small" id="show-only-editable">Show Only Editable</button></div><div class="column-checkboxes columns is-multiline">${checkboxesHtml}</div><div class="field is-grouped is-grouped-right"><button class="button" id="cancel-column-visibility">Cancel</button><button class="button is-primary" id="apply-column-visibility">Apply</button></div></div></div><button class="modal-close is-large" aria-label="close"></button></div>`;
+      return `<div class="modal is-active" id="column-visibility-modal"><div class="modal-background"></div><div class="modal-content"><div class="box"><h3 class="title is-4">Manage Column Visibility</h3><div class="field is-grouped"><button class="button is-small" id="show-all-columns">Show All</button><button class="button is-small" id="show-only-editable">Show Only Editable</button></div><div class="column-checkboxes columns is-multiline">${checkboxesHtml}</div><div class="field is-grouped is-grouped-right buttons"><button class="button" id="cancel-column-visibility">Cancel</button><button class="button is-primary" id="apply-column-visibility">Apply</button></div></div></div><button class="modal-close is-large" aria-label="close"></button></div>`;
     }
 
     /**
