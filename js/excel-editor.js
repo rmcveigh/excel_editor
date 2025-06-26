@@ -39,7 +39,7 @@
       /**
        * Holds the application's current state, such as hidden columns,
        * filters, and loading statuses.
-       * @type {{hiddenColumns: Set, currentFilters: {}, isInitialized: boolean, isLoading: boolean, currentProcessLoader: null}}
+       * @type {{hiddenColumns: Set, currentFilters: {}, isInitialized: boolean, isLoading: boolean, currentProcessLoader: null, currentDraftId: null, currentDraftName: string}}
        */
       this.state = {
         hiddenColumns: new Set(),
@@ -47,6 +47,8 @@
         isInitialized: false,
         isLoading: false,
         currentProcessLoader: null,
+        currentDraftId: null,
+        currentDraftName: '',
       };
 
       /**
@@ -59,7 +61,14 @@
         editableColumns: ['new_barcode', 'notes', 'actions'],
         maxFileSize: 10 * 1024 * 1024, // 10MB
         supportedFormats: ['.xlsx', '.xls', '.csv'],
+        autosaveInterval: 5 * 60 * 1000, // 5 minutes
       };
+
+      /**
+       * Holds the timer ID for the autosave functionality.
+       * @type {number|null}
+       */
+      this.autosaveTimer = null;
 
       /**
        * Stores the CSRF token required for authenticated POST/DELETE requests.
@@ -90,6 +99,9 @@
         this.hideLoading(); // Ensure loader is hidden on init
         this.bindEvents();
         this.loadDrafts();
+        if (this.config.settings.autosave_enabled) {
+          this.startAutosave();
+        }
         this.state.isInitialized = true;
         this.logDebug('Excel Editor initialized successfully');
       } catch (error) {
@@ -197,68 +209,16 @@
      * to handle dynamically added rows.
      */
     bindTableEvents() {
-      console.log('[Excel Editor] bindTableEvents called');
-
-      // Remove any existing events to prevent conflicts
       this.elements.tableContainer.off('.excelEditor');
-
-      // Bind with detailed logging
       this.elements.tableContainer.on(
         'click.excelEditor',
         '.filter-link',
         (e) => {
-          console.log(
-            '[Excel Editor] Click event triggered on table container!',
-            {
-              target: e.target,
-              currentTarget: e.currentTarget,
-              type: e.type,
-              timeStamp: e.timeStamp,
-            }
-          );
-
           e.preventDefault();
-          e.stopPropagation(); // Prevent any other handlers from interfering
-
-          console.log('[Excel Editor] About to call handleFilterClick...');
-
-          try {
-            this.handleFilterClick(e);
-            console.log(
-              '[Excel Editor] handleFilterClick completed successfully'
-            );
-          } catch (error) {
-            console.error('[Excel Editor] Error in handleFilterClick:', error);
-            alert('Error opening filter: ' + error.message);
-          }
+          e.stopPropagation();
+          this.handleFilterClick(e);
         }
       );
-
-      // Additional event binding strategies as fallback
-      $(document)
-        .off('click.excelEditorGlobal')
-        .on(
-          'click.excelEditorGlobal',
-          '.excel-editor-table .filter-link',
-          (e) => {
-            console.log(
-              '[Excel Editor] Global document click handler triggered'
-            );
-            e.preventDefault();
-            e.stopPropagation();
-
-            try {
-              this.handleFilterClick(e);
-            } catch (error) {
-              console.error(
-                '[Excel Editor] Error in global filter handler:',
-                error
-              );
-            }
-          }
-        );
-
-      // Bind other table events
       this.elements.tableContainer.on(
         'change.excelEditor',
         '.excel-editor-cell.editable',
@@ -274,8 +234,6 @@
         '#select-all-checkbox',
         (e) => this.handleSelectAllCheckbox(e)
       );
-
-      console.log('[Excel Editor] All table events bound successfully');
     }
 
     /**
@@ -288,7 +246,6 @@
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
         uploadArea.addEventListener(eventName, this.preventDefaults, false);
       });
-
       ['dragenter', 'dragover'].forEach((eventName) => {
         uploadArea.addEventListener(
           eventName,
@@ -296,7 +253,6 @@
           false
         );
       });
-
       ['dragleave', 'drop'].forEach((eventName) => {
         uploadArea.addEventListener(
           eventName,
@@ -304,12 +260,11 @@
           false
         );
       });
-
       uploadArea.addEventListener('drop', (e) => this.handleFileDrop(e), false);
     }
 
     /**
-     * Prevent default drag behaviors
+     * Prevent default drag behaviors.
      */
     preventDefaults(e) {
       e.preventDefault();
@@ -347,65 +302,13 @@
      * @param {Event} e The click event.
      */
     handleFilterClick(e) {
-      console.log('[Excel Editor] handleFilterClick method entered', {
-        event: e,
-        target: e.target,
-        currentTarget: e.currentTarget,
-      });
-
-      e.preventDefault();
-
       const $target = $(e.target);
       let columnIndex = $target.data('column');
-
-      console.log('[Excel Editor] Initial column index:', columnIndex);
-
-      // Fallback: if data-column not found on target, try parent elements
       if (columnIndex === undefined || columnIndex === null) {
-        const $link = $target.closest('.filter-link');
-        columnIndex = $link.data('column');
-        console.log(
-          '[Excel Editor] Column index from closest .filter-link:',
-          columnIndex
-        );
+        columnIndex = $target.closest('[data-column]').data('column');
       }
-
-      // Another fallback: parse from nearby th element
-      if (columnIndex === undefined || columnIndex === null) {
-        const $th = $target.closest('th');
-        columnIndex = $th.data('column');
-        console.log('[Excel Editor] Column index from th:', columnIndex);
-      }
-
-      console.log('[Excel Editor] Final column index:', columnIndex);
-
-      if (columnIndex === undefined || columnIndex === null) {
-        console.error(
-          '[Excel Editor] Could not determine column index for filter',
-          {
-            target: e.target,
-            targetData: $target.data(),
-            closestLink: $target.closest('.filter-link').data(),
-            closestTh: $target.closest('th').data(),
-          }
-        );
-        alert(
-          'Error: Could not determine column for filtering. See console for details.'
-        );
-        return;
-      }
-
-      console.log(
-        '[Excel Editor] About to call showColumnFilter with index:',
-        columnIndex
-      );
-
-      try {
+      if (columnIndex !== undefined && columnIndex !== null) {
         this.showColumnFilter(columnIndex);
-        console.log('[Excel Editor] showColumnFilter completed successfully');
-      } catch (error) {
-        console.error('[Excel Editor] Error in showColumnFilter:', error);
-        alert('Error showing filter modal: ' + error.message);
       }
     }
 
@@ -417,29 +320,23 @@
       const $cell = $(e.target);
       const rowIndex = parseInt($cell.data('row'));
       const colIndex = parseInt($cell.data('col'));
-      // Trim the input value to prevent whitespace issues
       const newValue = String($cell.val() || '').trim();
 
-      // Update data
       this.data.filtered[rowIndex][colIndex] = newValue;
       this.data.dirty = true;
 
-      // Apply row styling if this was an action change
       const columnName = this.data.filtered[0][colIndex];
       if (columnName === 'actions') {
         this.applyRowStyling();
       }
 
-      // Debounced save indication using Drupal's debounce
-      const debouncedSaveIndication = Drupal.debounce(() => {
+      Drupal.debounce(() => {
         this.showMessage(
           'Changes detected. Remember to save your draft.',
           'info',
           3000
         );
-      }, 1000);
-
-      debouncedSaveIndication();
+      }, 1000)();
     }
 
     /**
@@ -458,7 +355,6 @@
         this.data.selected.delete(rowIndex);
         $checkbox.closest('tr').removeClass('selected-row');
       }
-
       this.updateSelectionCount();
       this.updateSelectAllCheckbox();
     }
@@ -469,7 +365,6 @@
      */
     handleSelectAllCheckbox(e) {
       const isChecked = $(e.target).is(':checked');
-
       if (isChecked) {
         this.selectAllVisible();
       } else {
@@ -482,25 +377,9 @@
      * @param {KeyboardEvent} e The keydown event.
      */
     handleKeyboardShortcuts(e) {
-      // Ctrl+S or Cmd+S - Save draft
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         this.saveDraft();
-      }
-
-      // Ctrl+A or Cmd+A - Select all (when table is focused)
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.key === 'a' &&
-        $(e.target).closest('.excel-editor-table').length
-      ) {
-        e.preventDefault();
-        this.selectAllVisible();
-      }
-
-      // Escape - Clear selection
-      if (e.key === 'Escape') {
-        this.deselectAll();
       }
     }
 
@@ -525,46 +404,17 @@
      */
     async processFile(file) {
       try {
-        this.logDebug(
-          'Processing file:',
-          file.name,
-          'Type:',
-          file.type,
-          'Size:',
-          file.size
-        );
-
-        // Validate file
-        if (!this.validateFile(file)) {
-          return;
-        }
-
-        this.showProcessLoader('Processing Excel file...');
-
-        // Read file
-        this.logDebug('Reading file...');
+        if (!this.validateFile(file)) return;
+        this.showLoading('Processing Excel file...');
         const data = await this.readFile(file);
-        this.logDebug('File read successfully, data length:', data.byteLength);
-
-        // Parse based on file type
         let parsedData;
         if (file.name.toLowerCase().endsWith('.csv')) {
-          this.logDebug('Parsing as CSV...');
           parsedData = this.parseCSV(data);
         } else {
-          this.logDebug('Parsing as Excel...');
           parsedData = await this.parseExcel(data);
         }
-
-        this.logDebug('File parsed successfully, rows:', parsedData.length);
-
-        // Process the data
-        this.logDebug('Loading data into application...');
         this.loadData(parsedData);
-
-        setTimeout(() => {
-          this.hideProcessLoader();
-        }, 3000);
+        this.hideLoading();
         this.showMessage(
           `Successfully loaded ${this.data.original.length - 1} rows from ${
             file.name
@@ -573,9 +423,7 @@
         );
       } catch (error) {
         console.error('Error processing file:', error);
-        setTimeout(() => {
-          this.hideProcessLoader();
-        }, 3000);
+        this.hideLoading();
         this.handleError('Failed to process file', error);
       }
     }
@@ -586,7 +434,6 @@
      * @returns {boolean} True if the file is valid.
      */
     validateFile(file) {
-      // Check file size
       if (file.size > this.config.maxFileSize) {
         this.showMessage(
           `File too large. Maximum size is ${
@@ -596,8 +443,6 @@
         );
         return false;
       }
-
-      // Check file type
       const extension = '.' + file.name.split('.').pop().toLowerCase();
       if (!this.config.supportedFormats.includes(extension)) {
         this.showMessage(
@@ -608,7 +453,6 @@
         );
         return false;
       }
-
       return true;
     }
 
@@ -629,15 +473,13 @@
     /**
      * Parses CSV data from an ArrayBuffer.
      * @param {ArrayBuffer} data The raw file data.
-     * @returns {Array<Array<string>>} The parsed data as an array of arrays.
+     * @returns {Array<Array<string>>} The parsed data.
      */
     parseCSV(data) {
       const text = new TextDecoder().decode(data);
       const lines = text.split('\n').filter((line) => line.trim());
       return lines.map((line) => {
-        // Simple CSV parsing with enhanced trimming
         return line.split(',').map((cell) => {
-          // Remove quotes and trim whitespace
           return cell.trim().replace(/^["']|["']$/g, '');
         });
       });
@@ -649,101 +491,29 @@
      * @returns {Promise<Array<Array<string>>>} The parsed data.
      */
     async parseExcel(data) {
+      // Implementation is complex, but well-contained here.
+      // It reads the workbook, gets the first sheet, converts to JSON,
+      // trims all data, and filters out empty rows.
       return new Promise((resolve, reject) => {
         try {
-          this.logDebug('Parsing Excel file...');
-          this.logDebug('Data type:', typeof data);
-          this.logDebug('Data length:', data.byteLength || data.length);
-
-          // Check if XLSX is available
-          if (typeof XLSX === 'undefined') {
-            console.error('XLSX library not available during parsing.');
-            reject(
-              new Error(
-                'Excel parsing library is not available. Please try refreshing the page, or upload a CSV file instead.'
-              )
-            );
-            return;
-          }
-
-          this.logDebug('XLSX library available, version:', XLSX.version);
-
-          // Try parsing with different options if first attempt fails
-          let workbook;
-          try {
-            workbook = XLSX.read(data, { type: 'array' });
-          } catch (parseError) {
-            this.logDebug(
-              'First parse attempt failed, trying with buffer type:',
-              parseError
-            );
-            try {
-              workbook = XLSX.read(data, { type: 'buffer' });
-            } catch (bufferError) {
-              this.logDebug(
-                'Buffer parse failed, trying with uint8array:',
-                bufferError
-              );
-              workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
-            }
-          }
-
-          this.logDebug('Workbook parsed:', workbook);
-          this.logDebug('Sheet names:', workbook.SheetNames);
-
+          const workbook = XLSX.read(data, { type: 'array' });
           if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-            reject(
-              new Error(
-                'No worksheets found in Excel file. Please check that the file is not corrupted.'
-              )
-            );
-            return;
+            return reject(new Error('No worksheets found in Excel file.'));
           }
-
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          this.logDebug('Using worksheet:', sheetName);
-
-          // Convert to JSON with headers as first row
           const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1, // Use first row as headers
-            raw: false, // Convert everything to strings for consistency
-            defval: '', // Default value for empty cells
-            blankrows: false, // Skip blank rows
+            header: 1,
+            raw: false,
+            defval: '',
           });
-
-          this.logDebug('Parsed JSON data rows:', jsonData.length);
-
-          if (!jsonData || jsonData.length === 0) {
-            reject(
-              new Error(
-                'No data found in Excel file. The file may be empty or corrupted.'
-              )
-            );
-            return;
-          }
-
-          // TRIM ALL CELL VALUES to prevent duplicate filters
-          const trimmedData = jsonData.map((row, rowIndex) => {
-            if (!Array.isArray(row)) return row;
-
-            return row.map((cell, cellIndex) => {
-              // Trim all string values, preserve other types
-              if (typeof cell === 'string') {
-                return cell.trim();
-              }
-              // Convert other types to strings and trim
-              return String(cell || '').trim();
-            });
-          });
-
-          // Filter out completely empty rows and ensure we have at least header + 1 data row
-          const filteredData = trimmedData.filter((row, index) => {
-            // Always keep the first row (headers)
-            if (index === 0) return true;
-
-            // For other rows, check if they have any non-empty content
-            return (
+          const trimmedData = jsonData.map((row) =>
+            Array.isArray(row)
+              ? row.map((cell) => String(cell || '').trim())
+              : row
+          );
+          const filteredData = trimmedData.filter(
+            (row) =>
               Array.isArray(row) &&
               row.some(
                 (cell) =>
@@ -751,51 +521,18 @@
                   cell !== undefined &&
                   String(cell).trim() !== ''
               )
-            );
-          });
-
-          if (filteredData.length < 1) {
-            reject(
-              new Error(
-                'Excel file appears to be empty or contains no valid data rows.'
-              )
-            );
-            return;
-          }
-
-          if (filteredData.length === 1) {
-            reject(
-              new Error('Excel file only contains headers with no data rows.')
-            );
-            return;
-          }
-
-          this.logDebug(
-            'Final filtered and trimmed data:',
-            filteredData.length,
-            'rows'
           );
+
+          if (filteredData.length <= 1) {
+            // Header only or empty
+            return reject(new Error('Excel file contains no data rows.'));
+          }
+
           resolve(filteredData);
         } catch (error) {
-          console.error('Excel parsing error:', error);
-
-          // Provide more specific error messages
-          let errorMessage = 'Failed to parse Excel file: ';
-          if (error.message.includes('Invalid file')) {
-            errorMessage +=
-              'The file appears to be corrupted or not a valid Excel format.';
-          } else if (error.message.includes('Password')) {
-            errorMessage += 'Password-protected Excel files are not supported.';
-          } else if (error.message.includes('Encrypted')) {
-            errorMessage += 'Encrypted Excel files are not supported.';
-          } else {
-            errorMessage += error.message;
-          }
-
           reject(
             new Error(
-              errorMessage +
-                ' Please try saving the file as .xlsx or upload a CSV instead.'
+              'Failed to parse Excel file. It might be corrupted or in an unsupported format.'
             )
           );
         }
@@ -814,38 +551,23 @@
       this.logDebug('Loading data into application...', data);
 
       if (!data || data.length === 0) {
-        console.error('No data provided to loadData');
         throw new Error('No data found in file');
       }
 
-      // Trim all data before loading
       const trimmedData = data.map((row) => {
         if (!Array.isArray(row)) return row;
         return row.map((cell) => String(cell || '').trim());
       });
-
-      this.logDebug('Setting original data...');
       this.data.original = this.deepClone(trimmedData);
 
-      this.logDebug('Adding editable columns...');
       this.addEditableColumns();
 
-      this.logDebug('Setting filtered data...');
       this.data.filtered = this.deepClone(this.data.original);
-
       this.data.selected.clear();
       this.data.dirty = false;
-
-      this.logDebug('Applying default column visibility...');
       this.applyDefaultColumnVisibility();
-
-      this.logDebug('Rendering interface...');
       this.renderInterface();
-
-      this.logDebug('Updating selection count...');
       this.updateSelectionCount();
-
-      this.logDebug('Data loading complete!');
     }
 
     /**
@@ -854,26 +576,16 @@
      */
     addEditableColumns() {
       if (!this.data.original.length) return;
-
       const headerRow = this.data.original[0];
-
-      // Check if editable columns already exist
       if (this.config.editableColumns.some((col) => headerRow.includes(col))) {
         return;
       }
-
-      // Add new_barcode at the beginning
       headerRow.unshift('new_barcode');
-
-      // Add notes and actions at the end
       headerRow.push('notes', 'actions');
-
-      // Add empty values for existing rows
       for (let i = 1; i < this.data.original.length; i++) {
-        this.data.original[i].unshift(''); // barcode
-        this.data.original[i].push('', ''); // notes, actions
+        this.data.original[i].unshift('');
+        this.data.original[i].push('', '');
       }
-
       this.data.dirty = true;
     }
 
@@ -882,27 +594,19 @@
      * This is called when data is first loaded.
      */
     applyDefaultColumnVisibility() {
-      const settings = this.config.settings;
-
-      this.logDebug('Applying default column visibility...');
-      this.logDebug('Settings:', settings);
-
-      if (!settings.hideBehavior || settings.hideBehavior !== 'hide_others') {
-        this.logDebug(
-          'Hide behavior is not "hide_others", skipping column hiding.'
-        );
+      const { settings } = this.config;
+      if (
+        settings.hideBehavior !== 'hide_others' ||
+        !settings.defaultVisibleColumns?.length
+      ) {
         return;
       }
-
-      if (!settings.defaultVisibleColumns?.length) {
-        this.logDebug('No default visible columns specified');
-        return;
-      }
-
       const defaultColumns = settings.defaultVisibleColumns.map((col) =>
-        col.trim()
+        col.trim().toLowerCase()
       );
-      const alwaysVisible = this.config.editableColumns;
+      const alwaysVisible = this.config.editableColumns.map((col) =>
+        col.toLowerCase()
+      );
       const maxColumns = settings.maxVisibleColumns || 50;
 
       this.state.hiddenColumns.clear();
@@ -910,15 +614,10 @@
       let visibleCount = 0;
 
       headerRow.forEach((header, index) => {
-        const trimmedHeader = String(header).trim();
-        const isInDefaultList = defaultColumns.some(
-          (defCol) => defCol.toLowerCase() === trimmedHeader.toLowerCase()
-        );
-        const isAlwaysVisible = alwaysVisible.some(
-          (alwaysCol) => alwaysCol.toLowerCase() === trimmedHeader.toLowerCase()
-        );
-        const shouldBeVisible = isInDefaultList || isAlwaysVisible;
-
+        const trimmedHeader = String(header).trim().toLowerCase();
+        const shouldBeVisible =
+          defaultColumns.includes(trimmedHeader) ||
+          alwaysVisible.includes(trimmedHeader);
         if (!shouldBeVisible) {
           this.state.hiddenColumns.add(index);
         } else if (visibleCount < maxColumns) {
@@ -931,7 +630,6 @@
 
     /**
      * Creates a deep clone of an object or array.
-     * This is a utility to prevent modifying original data by reference.
      * @param {*} obj The object or array to clone.
      * @returns {*} A deep copy.
      */
@@ -947,98 +645,56 @@
      * Renders the main interface after data is loaded.
      */
     renderInterface() {
-      this.logDebug('Rendering interface...');
-
       this.elements.uploadArea.hide();
       this.elements.mainArea.show();
-
-      this.logDebug('Calling renderTable...');
       this.renderTable();
-
-      this.logDebug('Calling setupFilters...');
       this.setupFilters();
-
-      this.logDebug('Interface rendering complete!');
     }
 
     /**
-     * Renders the main data table with performance optimization and loading.
+     * Renders the main data table.
      */
     async renderTable() {
-      this.logDebug('Starting renderTable...');
-      this.logDebug('Filtered data length:', this.data.filtered.length);
-
       if (!this.data.filtered.length) {
-        this.logDebug('No filtered data, showing empty message');
         this.elements.tableContainer.html(
           '<p class="has-text-centered">No data available</p>'
         );
         return;
       }
+      const fragment = document.createDocumentFragment();
+      const table = document.createElement('table');
+      table.className = 'excel-editor-table table is-fullwidth is-striped';
+      table.id = 'excel-table';
 
-      const shouldShowProcessLoader =
-        !this.state.currentProcessLoader && !this.state.isLoading;
+      table.appendChild(this.createTableHeader());
+      table.appendChild(this.createTableBody());
+      fragment.appendChild(table);
 
-      if (shouldShowProcessLoader) {
-        this.showProcessLoader('Updating table...');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 30));
-
-      try {
-        const startTime = performance.now();
-        const fragment = document.createDocumentFragment();
-        const table = document.createElement('table');
-        table.className = 'excel-editor-table table is-fullwidth is-striped';
-        table.id = 'excel-table';
-
-        const thead = this.createTableHeader();
-        table.appendChild(thead);
-
-        const tbody = this.createTableBody();
-        table.appendChild(tbody);
-        fragment.appendChild(table);
-
-        this.elements.tableContainer.html('');
-        this.elements.tableContainer.append(fragment);
-        this.elements.table = $('#excel-table');
-        this.bindTableEvents();
-
-        const endTime = performance.now();
-        this.logDebug(
-          `Table rendered in ${(endTime - startTime).toFixed(2)}ms`
-        );
-
-        this.applyRowStyling();
-      } finally {
-        if (shouldShowProcessLoader) {
-          this.hideProcessLoader();
-        }
-      }
+      this.elements.tableContainer.html(fragment);
+      this.elements.table = $('#excel-table');
+      this.bindTableEvents();
+      this.applyRowStyling();
     }
 
     /**
      * Creates the table header (<thead>).
-     * This is a helper for renderTable.
      * @returns {HTMLTableSectionElement} The created thead element.
      */
     createTableHeader() {
       const thead = document.createElement('thead');
       const headerRow = document.createElement('tr');
-
-      const selectionTh = document.createElement('th');
-      selectionTh.className = 'selection-column';
-      selectionTh.innerHTML = `<label class="checkbox"><input type="checkbox" id="select-all-checkbox" /></label>`;
-      headerRow.appendChild(selectionTh);
+      headerRow.innerHTML =
+        '<th class="selection-column"><label class="checkbox"><input type="checkbox" id="select-all-checkbox" /></label></th>';
 
       this.data.filtered[0].forEach((header, index) => {
-        if (this.state.hiddenColumns.has(index)) return;
-        const th = document.createElement('th');
-        th.dataset.column = index;
-        th.innerHTML = `${this.escapeHtml(
-          header
-        )}<br><small><a href="#" class="filter-link" data-column="${index}">Filter</a></small>`;
-        headerRow.appendChild(th);
+        if (!this.state.hiddenColumns.has(index)) {
+          const th = document.createElement('th');
+          th.dataset.column = index;
+          th.innerHTML = `${this.escapeHtml(
+            header
+          )}<br><small><a href="#" class="filter-link" data-column="${index}">Filter</a></small>`;
+          headerRow.appendChild(th);
+        }
       });
 
       thead.appendChild(headerRow);
@@ -1047,22 +703,19 @@
 
     /**
      * Creates the table body (<tbody>).
-     * This is a helper for renderTable.
      * @returns {HTMLTableSectionElement} The created tbody element.
      */
     createTableBody() {
       const tbody = document.createElement('tbody');
       for (let i = 1; i < this.data.filtered.length; i++) {
-        const row = this.createTableRow(i);
-        tbody.appendChild(row);
+        tbody.appendChild(this.createTableRow(i));
       }
       return tbody;
     }
 
     /**
      * Creates an individual table row (<tr>).
-     * This is a helper for createTableBody.
-     * @param {number} rowIndex The index of the row in the filtered data.
+     * @param {number} rowIndex The index of the row.
      * @returns {HTMLTableRowElement} The created tr element.
      */
     createTableRow(rowIndex) {
@@ -1070,29 +723,22 @@
       row.dataset.row = rowIndex;
       const rowData = this.data.filtered[rowIndex];
       const isSelected = this.data.selected.has(rowIndex);
-      if (isSelected) {
-        row.classList.add('selected-row');
-      }
+      if (isSelected) row.classList.add('selected-row');
 
-      const selectionTd = document.createElement('td');
-      selectionTd.className = 'selection-column';
-      selectionTd.innerHTML = `<label class="checkbox"><input type="checkbox" class="row-checkbox" data-row="${rowIndex}" ${
+      row.innerHTML = `<td class="selection-column"><label class="checkbox"><input type="checkbox" class="row-checkbox" data-row="${rowIndex}" ${
         isSelected ? 'checked' : ''
-      } /></label>`;
-      row.appendChild(selectionTd);
+      } /></label></td>`;
 
       rowData.forEach((cell, colIndex) => {
-        if (this.state.hiddenColumns.has(colIndex)) return;
-        const td = this.createTableCell(rowIndex, colIndex, cell);
-        row.appendChild(td);
+        if (!this.state.hiddenColumns.has(colIndex)) {
+          row.appendChild(this.createTableCell(rowIndex, colIndex, cell));
+        }
       });
-
       return row;
     }
 
     /**
      * Creates an individual table cell (<td>).
-     * This is a helper for createTableRow.
      * @param {number} rowIndex The row index.
      * @param {number} colIndex The column index.
      * @param {string} cellValue The value of the cell.
@@ -1120,7 +766,6 @@
             cellValue
           );
         } else {
-          td.classList.add('new-barcode-column');
           td.innerHTML = this.createTextInput(
             rowIndex,
             colIndex,
@@ -1137,9 +782,6 @@
       return td;
     }
 
-    /**
-     * Creates the HTML for the 'actions' dropdown.
-     */
     createActionsDropdown(rowIndex, colIndex, value) {
       const selected = {
         '': !value ? 'selected' : '',
@@ -1158,18 +800,12 @@
       }>${Drupal.t('Discard')}</option></select></div>`;
     }
 
-    /**
-     * Creates the HTML for the 'notes' textarea.
-     */
     createNotesTextarea(rowIndex, colIndex, value) {
       return `<textarea class="excel-editor-cell editable notes-textarea" data-row="${rowIndex}" data-col="${colIndex}" placeholder="${Drupal.t(
         'Add notes...'
       )}" rows="2">${this.escapeHtml(value || '')}</textarea>`;
     }
 
-    /**
-     * Creates the HTML for a generic text input.
-     */
     createTextInput(rowIndex, colIndex, value, placeholder) {
       return `<input type="text" class="excel-editor-cell editable" data-row="${rowIndex}" data-col="${colIndex}" value="${this.escapeHtml(
         value || ''
@@ -1196,9 +832,7 @@
         const rowIndex = parseInt($row.data('row'));
         const actionValue = this.getActionValue(rowIndex);
         $row.removeClass('action-relabel action-pending action-discard');
-        if (actionValue) {
-          $row.addClass(`action-${actionValue}`);
-        }
+        if (actionValue) $row.addClass(`action-${actionValue}`);
       });
     }
 
@@ -1216,19 +850,19 @@
     }
 
     /**
-     * Updates the state of the "select all" checkbox (checked, unchecked, or indeterminate).
+     * Updates the state of the "select all" checkbox.
      */
     updateSelectAllCheckbox() {
-      const totalRows = this.data.filtered.length - 1; // Exclude header
+      const totalRows = this.data.filtered.length - 1;
       const selectedRows = this.data.selected.size;
       const $selectAllCheckbox = $('#select-all-checkbox');
 
       if (selectedRows === 0) {
-        $selectAllCheckbox.prop('checked', false).prop('indeterminate', false);
+        $selectAllCheckbox.prop({ checked: false, indeterminate: false });
       } else if (selectedRows === totalRows && totalRows > 0) {
-        $selectAllCheckbox.prop('checked', true).prop('indeterminate', false);
+        $selectAllCheckbox.prop({ checked: true, indeterminate: false });
       } else {
-        $selectAllCheckbox.prop('checked', false).prop('indeterminate', true);
+        $selectAllCheckbox.prop({ checked: false, indeterminate: true });
       }
     }
 
@@ -1236,28 +870,17 @@
     // SELECTION
     // =========================================================================
 
-    /**
-     * Selects all rows currently visible in the table.
-     */
     selectAllVisible() {
       this.elements.tableContainer
-        .find('.row-checkbox')
+        .find('.row-checkbox:visible')
         .each((index, checkbox) => {
           const $checkbox = $(checkbox);
-          const rowIndex = parseInt($checkbox.data('row'));
           if (!$checkbox.is(':checked')) {
-            $checkbox.prop('checked', true);
-            this.data.selected.add(rowIndex);
-            $checkbox.closest('tr').addClass('selected-row');
+            $checkbox.prop('checked', true).trigger('change');
           }
         });
-      this.updateSelectionCount();
-      this.updateSelectAllCheckbox();
     }
 
-    /**
-     * Deselects all rows.
-     */
     deselectAll() {
       this.data.selected.clear();
       this.elements.tableContainer.find('.row-checkbox').prop('checked', false);
@@ -1275,42 +898,23 @@
      */
     setupFilters() {
       if (!this.data.filtered.length) return;
-
       let statusMessages = '';
-
-      // Hidden columns notification
       if (this.state.hiddenColumns.size > 0) {
         statusMessages += `<div class="field"><div class="notification is-info is-light"><span class="icon"><i class="fas fa-eye-slash"></i></span> ${
           this.state.hiddenColumns.size
         } column${
           this.state.hiddenColumns.size !== 1 ? 's' : ''
-        } hidden. <button class="button is-small is-light ml-2" id="show-column-settings"><span class="icon is-small"><i class="fas fa-eye"></i></span><span>${Drupal.t(
-          'Manage Columns'
-        )}</span></button></div></div>`;
+        } hidden. <button class="button is-small is-light ml-2" id="show-column-settings"><span>Manage Columns</span></button></div></div>`;
       }
-
-      // Default columns notification
       if (
         this.config.settings.hideBehavior === 'hide_others' &&
         this.config.settings.defaultVisibleColumns?.length > 0
       ) {
-        statusMessages += `<div class="field"><div class="notification is-primary is-light"><span class="icon"><i class="fas fa-cog"></i></span> ${Drupal.t(
-          'Default column visibility applied'
-        )}. <button class="button is-small is-light ml-2" id="reset-to-defaults"><span class="icon is-small"><i class="fas fa-undo"></i></span><span>${Drupal.t(
-          'Reset to Defaults'
-        )}</span></button> <button class="button is-small is-light ml-2" id="show-all-override"><span class="icon is-small"><i class="fas fa-eye"></i></span><span>${Drupal.t(
-          'Show All'
-        )}</span></button></div></div>`;
+        statusMessages += `<div class="field"><div class="notification is-primary is-light"><span class="icon"><i class="fas fa-cog"></i></span> Default column visibility applied. <button class="button is-small is-light ml-2" id="reset-to-defaults"><span>Reset to Defaults</span></button> <button class="button is-small is-light ml-2" id="show-all-override"><span>Show All</span></button></div></div>`;
       }
-
       this.elements.filtersContainer.html(
-        `${statusMessages} <div class="field mb-2" id="active-filters-container" style="display: none;"><label class="label">${Drupal.t(
-          'Active Filters:'
-        )}</label><div class="control" id="active-filters"></div><div class="control mt-2"><button class="button is-small is-light" id="clear-all-filters-btn"><span class="icon is-small"><i class="fas fa-times"></i></span><span>${Drupal.t(
-          'Clear All Filters'
-        )}</span></button></div></div>`
+        `${statusMessages} <div class="field mb-2" id="active-filters-container" style="display: none;"><label class="label">Active Filters:</label><div class="control" id="active-filters"></div><div class="control mt-2"><button class="button is-small is-light" id="clear-all-filters-btn"><span>Clear All Filters</span></button></div></div>`
       );
-
       this.bindFilterEvents();
     }
 
@@ -1331,37 +935,23 @@
      * @param {number} columnIndex The index of the column to filter.
      */
     showColumnFilter(columnIndex) {
-      if (
-        !this.data.filtered.length ||
-        columnIndex < 0 ||
-        columnIndex >= this.data.filtered[0].length
-      ) {
-        this.handleError('Invalid column for filtering.');
-        return;
-      }
-
       this.showQuickLoader('Loading filter options...');
       setTimeout(() => {
         try {
           const header = this.data.filtered[0][columnIndex];
           const uniqueValues = this.getUniqueColumnValues(columnIndex);
-
-          $('.modal#filter-modal').remove();
-
           const modalHtml = this._buildFilterModalHtml(
             header,
             uniqueValues,
             columnIndex
           );
-          const modal = $(modalHtml);
-
-          $('body').append(modal);
-          this.bindFilterModalEvents(modal, columnIndex, header);
-          this.updateFilterSelectedCount(modal);
+          $('body').append(modalHtml);
+          this.bindFilterModalEvents($('#filter-modal'), columnIndex, header);
+          this.updateFilterSelectedCount($('#filter-modal'));
         } finally {
           this.hideQuickLoader();
         }
-      }, 100);
+      }, 50);
     }
 
     /**
@@ -1387,7 +977,7 @@
         })
         .join('');
 
-      return `<div class="modal is-active" id="filter-modal" style="display: flex !important; z-index: 9999;">
+      return `<div class="modal is-active" id="filter-modal" style="display: flex !important; z-index: 99999;">
                 <div class="modal-background"></div>
                 <div class="modal-content">
                   <div class="box">
@@ -1417,7 +1007,7 @@
                     <p class="help mt-2"><span id="selected-count">0</span> of ${
                       uniqueValues.length
                     } values selected</p>
-                    <div class="field is-grouped is-grouped-right buttons">
+                    <div class="field is-grouped is-grouped-right">
                       <div class="control"><button class="button" id="clear-column-filter">Clear Filter</button></div>
                       <div class="control"><button class="button" id="cancel-filter">Cancel</button></div>
                       <div class="control"><button class="button is-primary" id="apply-filter">Apply Filter</button></div>
@@ -1472,17 +1062,12 @@
       });
 
       modal.find('#clear-column-filter').on('click', async () => {
-        this.showProcessLoader('Clearing filter...');
-        try {
-          delete this.state.currentFilters[columnIndex];
-          await this.applyFilters();
-          this.updateActiveFiltersDisplay();
-          modal.remove();
-          this.showMessage(`Filter cleared for ${header}`, 'success');
-        } finally {
-          this.hideProcessLoader();
-        }
+        delete this.state.currentFilters[columnIndex];
+        await this.applyFilters();
+        this.updateActiveFiltersDisplay();
+        modal.remove();
       });
+
       modal.find('#apply-filter').on('click', async () => {
         await this.applyFilterFromModal(modal, columnIndex);
         modal.remove();
@@ -1495,27 +1080,22 @@
      * @param {number} columnIndex The column index being filtered.
      */
     async applyFilterFromModal(modal, columnIndex) {
-      this.showProcessLoader('Applying filter...');
-      try {
-        const selectedValues = [];
-        modal.find('.filter-value-checkbox:checked').each(function () {
-          selectedValues.push($(this).val());
-        });
+      const selectedValues = [];
+      modal.find('.filter-value-checkbox:checked').each(function () {
+        selectedValues.push($(this).val());
+      });
 
-        if (selectedValues.length > 0) {
-          this.state.currentFilters[columnIndex] = {
-            type: 'quick',
-            selected: selectedValues,
-          };
-        } else {
-          delete this.state.currentFilters[columnIndex];
-        }
-
-        await this.applyFilters();
-        this.updateActiveFiltersDisplay();
-      } finally {
-        this.hideProcessLoader();
+      if (selectedValues.length > 0) {
+        this.state.currentFilters[columnIndex] = {
+          type: 'quick',
+          selected: selectedValues,
+        };
+      } else {
+        delete this.state.currentFilters[columnIndex];
       }
+
+      await this.applyFilters();
+      this.updateActiveFiltersDisplay();
     }
 
     /**
@@ -1524,48 +1104,23 @@
     async applyFilters() {
       if (Object.keys(this.state.currentFilters).length === 0) {
         this.data.filtered = this.deepClone(this.data.original);
-        this.renderTable();
-        return;
-      }
-
-      this.showProcessLoader('Applying filters...');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      try {
-        const startTime = performance.now();
+      } else {
         this.data.filtered = [this.data.original[0]]; // Keep header
-
         for (let i = 1; i < this.data.original.length; i++) {
           const row = this.data.original[i];
-          let includeRow = true;
-
-          for (const [columnIndex, filter] of Object.entries(
-            this.state.currentFilters
-          )) {
-            const colIndex = parseInt(columnIndex);
-            const cellValue = row[colIndex] || '';
-
-            if (!this.rowMatchesFilter(cellValue, filter)) {
-              includeRow = false;
-              break;
-            }
-          }
-
-          if (includeRow) {
+          if (
+            Object.entries(this.state.currentFilters).every(
+              ([colIndex, filter]) =>
+                this.rowMatchesFilter(row[parseInt(colIndex)], filter)
+            )
+          ) {
             this.data.filtered.push(row);
           }
         }
-
-        const endTime = performance.now();
-        this.logDebug(
-          `Filters applied in ${(endTime - startTime).toFixed(2)}ms`
-        );
-        this.data.selected.clear();
-        await this.renderTable();
-        this.updateSelectionCount();
-      } finally {
-        this.hideProcessLoader();
       }
+      this.data.selected.clear();
+      await this.renderTable();
+      this.updateSelectionCount();
     }
 
     /**
@@ -1580,7 +1135,6 @@
         .toLowerCase();
       switch (filter.type) {
         case 'quick':
-          // eslint-disable-next-line no-case-declarations
           const trimmedSelected = filter.selected.map((val) =>
             String(val || '').trim()
           );
@@ -1787,7 +1341,7 @@
         })
         .join('');
 
-      return `<div class="modal is-active" id="column-visibility-modal"><div class="modal-background"></div><div class="modal-content"><div class="box"><h3 class="title is-4">Manage Column Visibility</h3><div class="field is-grouped"><button class="button is-small" id="show-all-columns">Show All</button><button class="button is-small" id="show-only-editable">Show Only Editable</button></div><div class="column-checkboxes columns is-multiline">${checkboxesHtml}</div><div class="field is-grouped is-grouped-right buttons"><button class="button" id="cancel-column-visibility">Cancel</button><button class="button is-primary" id="apply-column-visibility">Apply</button></div></div></div><button class="modal-close is-large" aria-label="close"></button></div>`;
+      return `<div class="modal is-active" id="column-visibility-modal"><div class="modal-background"></div><div class="modal-content"><div class="box"><h3 class="title is-4">Manage Column Visibility</h3><div class="field is-grouped"><button class="button is-small" id="show-all-columns">Show All</button><button class="button is-small" id="show-only-editable">Show Only Editable</button></div><div class="column-checkboxes columns is-multiline">${checkboxesHtml}</div><div class="field is-grouped is-grouped-right"><button class="button" id="cancel-column-visibility">Cancel</button><button class="button is-primary" id="apply-column-visibility">Apply</button></div></div></div><button class="modal-close is-large" aria-label="close"></button></div>`;
     }
 
     /**
@@ -1868,6 +1422,174 @@
     // =========================================================================
 
     /**
+     * Starts the autosave timer.
+     */
+    startAutosave() {
+      this.stopAutosave(); // Clear any existing timer
+      this.autosaveTimer = setInterval(() => {
+        this.autosaveDraft();
+      }, this.config.autosaveInterval);
+      this.logDebug(
+        `Autosave started with interval: ${this.config.autosaveInterval}ms`
+      );
+    }
+
+    /**
+     * Stops the autosave timer.
+     */
+    stopAutosave() {
+      if (this.autosaveTimer) {
+        clearInterval(this.autosaveTimer);
+        this.autosaveTimer = null;
+        this.logDebug('Autosave stopped.');
+      }
+    }
+
+    /**
+     * Performs the autosave operation.
+     */
+    async autosaveDraft() {
+      if (!this.data.dirty || !this.state.currentDraftId) {
+        return;
+      }
+
+      this.logDebug(`Autosaving draft ID: ${this.state.currentDraftId}`);
+      this.showQuickLoader('Autosaving...');
+
+      try {
+        const draftData = {
+          draft_id: this.state.currentDraftId,
+          name: this.state.currentDraftName,
+          data: this.data.original,
+          filters: this.state.currentFilters,
+          hiddenColumns: Array.from(this.state.hiddenColumns),
+          selected: Array.from(this.data.selected),
+          timestamp: new Date().toISOString(),
+        };
+
+        const response = await this.apiCall(
+          'POST',
+          this.config.endpoints.saveDraft,
+          draftData
+        );
+
+        if (response.success) {
+          this.data.dirty = false;
+          this.showQuickLoader('Draft autosaved.', 'success');
+          setTimeout(() => this.hideQuickLoader(), 2000);
+          this.loadDrafts();
+        } else {
+          throw new Error(response.message || 'Autosave failed');
+        }
+      } catch (error) {
+        this.handleError('Autosave failed', error);
+      }
+    }
+
+    /**
+     * [HELPER] Creates and displays a modal to prompt the user for a draft name.
+     * @returns {Promise<string|null>} A promise that resolves with the draft name, or null if canceled.
+     */
+    _promptForDraftName() {
+      return new Promise((resolve) => {
+        $('.modal#save-draft-modal').remove();
+
+        const defaultName = `Draft ${new Date().toLocaleString()}`;
+        const modalHtml = `
+          <div class="modal is-active" id="save-draft-modal">
+            <div class="modal-background"></div>
+            <div class="modal-content">
+              <div class="box">
+                <h3 class="title is-4">Save Draft</h3>
+                <div class="field">
+                  <label class="label">Draft Name</label>
+                  <div class="control">
+                    <input class="input" id="draft-name-input" type="text" value="${this.escapeHtml(
+                      defaultName
+                    )}">
+                  </div>
+                </div>
+                <div class="field is-grouped is-grouped-right">
+                  <div class="control">
+                    <button class="button" id="cancel-save-draft">Cancel</button>
+                  </div>
+                  <div class="control">
+                    <button class="button is-primary" id="confirm-save-draft">Save</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+
+        const modal = $(modalHtml);
+        $('body').append(modal);
+        const nameInput = modal.find('#draft-name-input').focus().select();
+
+        const closeModal = () => modal.remove();
+
+        modal.find('#confirm-save-draft').on('click', () => {
+          const draftName = nameInput.val().trim();
+          if (draftName) {
+            resolve(draftName);
+            closeModal();
+          } else {
+            nameInput.addClass('is-danger');
+          }
+        });
+
+        modal.find('#cancel-save-draft, .modal-background').on('click', () => {
+          resolve(null);
+          closeModal();
+        });
+      });
+    }
+
+    /**
+     * Shows a modal to ask the user for a draft name before saving manually.
+     */
+    async saveDraft() {
+      if (!this.data.original.length) {
+        this.showMessage('No data to save', 'warning');
+        return;
+      }
+      const draftName = await this._promptForDraftName();
+      if (draftName) {
+        this.showLoading('Saving draft...');
+        try {
+          const draftData = {
+            name: draftName,
+            data: this.data.original,
+            filters: this.state.currentFilters,
+            hiddenColumns: Array.from(this.state.hiddenColumns),
+            selected: Array.from(this.data.selected),
+            timestamp: new Date().toISOString(),
+          };
+          const response = await this.apiCall(
+            'POST',
+            this.config.endpoints.saveDraft,
+            draftData
+          );
+          if (response.success && response.draft_id) {
+            this.data.dirty = false;
+            this.state.currentDraftId = response.draft_id;
+            this.state.currentDraftName = draftName;
+            this.showMessage(
+              `Draft "${this.escapeHtml(draftName)}" saved successfully`,
+              'success'
+            );
+            this.loadDrafts();
+          } else {
+            throw new Error(response.message || 'Failed to save draft');
+          }
+        } catch (error) {
+          this.handleError('Failed to save draft', error);
+        } finally {
+          this.hideLoading();
+        }
+      }
+    }
+
+    /**
      * A centralized helper function for making API calls to the Drupal backend.
      * @param {string} method The HTTP method (GET, POST, DELETE).
      * @param {string} url The API endpoint URL.
@@ -1913,43 +1635,6 @@
     }
 
     /**
-     * Saves the current table data as a draft.
-     */
-    async saveDraft() {
-      if (!this.data.original.length) {
-        this.showMessage('No data to save', 'warning');
-        return;
-      }
-      this.showLoading('Saving draft...');
-      try {
-        const draftData = {
-          name: `Draft ${new Date().toLocaleString()}`,
-          data: this.data.original,
-          filters: this.state.currentFilters,
-          hiddenColumns: Array.from(this.state.hiddenColumns),
-          selected: Array.from(this.data.selected),
-          timestamp: new Date().toISOString(),
-        };
-        const response = await this.apiCall(
-          'POST',
-          this.config.endpoints.saveDraft,
-          draftData
-        );
-        if (response.success) {
-          this.data.dirty = false;
-          this.showMessage('Draft saved successfully', 'success');
-          this.loadDrafts();
-        } else {
-          throw new Error(response.message || 'Failed to save draft');
-        }
-      } catch (error) {
-        this.handleError('Failed to save draft', error);
-      } finally {
-        this.hideLoading();
-      }
-    }
-
-    /**
      * Loads a list of the user's drafts from the server.
      */
     async loadDrafts() {
@@ -1983,10 +1668,8 @@
             `<div class="excel-editor-draft-item"><div><strong>${this.escapeHtml(
               draft.name || 'Untitled Draft'
             )}</strong><br><small class="has-text-grey">${new Date(
-              draft.created
-            ).toLocaleDateString()} - ${
-              draft.rows || 0
-            } rows</small></div><div class="field is-grouped"><div class="control"><button class="button is-small is-info load-draft-btn" data-draft-id="${
+              draft.changed * 1000
+            ).toLocaleString()}</small></div><div class="field is-grouped"><div class="control"><button class="button is-small is-info load-draft-btn" data-draft-id="${
               draft.id
             }"><span>${Drupal.t(
               'Load'
@@ -2020,8 +1703,13 @@
           `${this.config.endpoints.loadDraft}${draftId}`
         );
         if (response.success && response.data) {
+          this.state.currentDraftId = response.id;
+          this.state.currentDraftName = response.name;
           this.loadDraftData(response.data);
-          this.showMessage('Draft loaded successfully', 'success');
+          this.showMessage(
+            `Draft "${this.escapeHtml(response.name)}" loaded successfully`,
+            'success'
+          );
         } else {
           throw new Error(response.message || 'Failed to load draft');
         }
@@ -2184,7 +1872,7 @@
       this.hideProcessLoader();
       const loaderId = 'process-loader-' + Date.now();
       const loader = $(
-        `<div class="excel-editor-overlay-loader" id="${loaderId}"><div class="loading-content is-flex is-justify-content-center"><div class="excel-editor-spinner loader mr-2"></div><p><strong>${this.escapeHtml(
+        `<div class="excel-editor-overlay-loader" id="${loaderId}"><div class="loading-content"><div class="excel-editor-spinner"></div><p><strong>${this.escapeHtml(
           message
         )}</strong></p></div></div>`
       );

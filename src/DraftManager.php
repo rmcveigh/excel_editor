@@ -21,17 +21,17 @@ final class DraftManager {
   ) {}
 
   /**
-   * Saves a draft for the current user.
+   * Saves a new draft for the current user.
    *
    * @param string $name
    *   The name of the draft.
    * @param array $data
    *   The draft data to save.
    *
-   * @return int
-   *   The ID of the saved draft.
+   * @return int|null
+   *   The ID of the saved draft, or null on failure.
    */
-  public function saveDraft(string $name, array $data) {
+  public function saveDraft(string $name, array $data): ?int {
     $fields = [
       'uid' => $this->currentUser->id(),
       'name' => $name,
@@ -40,10 +40,36 @@ final class DraftManager {
       'changed' => time(),
     ];
 
-    $query = $this->connection->insert('excel_editor_drafts')
-      ->fields($fields);
+    return (int) $this->connection->insert('excel_editor_drafts')
+      ->fields($fields)
+      ->execute();
+  }
 
-    return $query->execute();
+  /**
+   * Updates an existing draft for the current user.
+   *
+   * @param int $draft_id
+   *   The ID of the draft to update.
+   * @param string $name
+   *   The new name for the draft.
+   * @param array $data
+   *   The new draft data.
+   *
+   * @return int
+   *   The number of affected rows.
+   */
+  public function updateDraft(int $draft_id, string $name, array $data): int {
+    $fields = [
+      'name' => $name,
+      'draft_data' => json_encode($data),
+      'changed' => time(),
+    ];
+
+    return $this->connection->update('excel_editor_drafts')
+      ->fields($fields)
+      ->condition('id', $draft_id)
+      ->condition('uid', $this->currentUser->id())
+      ->execute();
   }
 
   /**
@@ -55,16 +81,14 @@ final class DraftManager {
    * @return object|null
    *   The draft object or NULL if not found.
    */
-  public function loadDraft(int $draft_id) {
-    $query = $this->connection->select('excel_editor_drafts', 'd')
+  public function loadDraft(int $draft_id): ?object {
+    $result = $this->connection->select('excel_editor_drafts', 'd')
       ->fields('d')
       ->condition('d.id', $draft_id)
-      ->condition('d.uid', $this->currentUser->id());
+      ->condition('d.uid', $this->currentUser->id())
+      ->execute()->fetchObject();
 
-    $result = $query->execute()->fetchObject();
-
-    if ($result && $result->draft_data) {
-      // Decode the JSON data
+    if ($result && !empty($result->draft_data)) {
       $result->draft_data = json_decode($result->draft_data, TRUE);
     }
 
@@ -80,12 +104,11 @@ final class DraftManager {
    * @return int
    *   The number of rows deleted.
    */
-  public function deleteDraft(int $draft_id) {
-    $query = $this->connection->delete('excel_editor_drafts')
+  public function deleteDraft(int $draft_id): int {
+    return $this->connection->delete('excel_editor_drafts')
       ->condition('id', $draft_id)
-      ->condition('uid', $this->currentUser->id());
-
-    return $query->execute();
+      ->condition('uid', $this->currentUser->id())
+      ->execute();
   }
 
   /**
@@ -94,13 +117,13 @@ final class DraftManager {
    * @return array
    *   An array of draft objects.
    */
-  public function listDrafts() {
+  public function listDrafts(): array {
     $query = $this->connection->select('excel_editor_drafts', 'd')
-      ->fields('d', ['id', 'name', 'changed'])
+      ->fields('d', ['id', 'name', 'created', 'changed'])
       ->condition('d.uid', $this->currentUser->id())
       ->orderBy('d.changed', 'DESC');
 
-    return $query->execute()->fetchAll();
+    return $query->execute()->fetchAll(\PDO::FETCH_ASSOC);
   }
 
 }

@@ -30,6 +30,18 @@ class ExcelEditorConfigForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('excel_editor.settings');
 
+    $form['general'] = [
+      '#type' => 'fieldset',
+      '#title' => $this->t('General Settings'),
+    ];
+
+    $form['general']['autosave_enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable Autosave'),
+      '#description' => $this->t('If checked, drafts will be automatically saved every 5 minutes.'),
+      '#default_value' => $config->get('autosave_enabled'),
+    ];
+
     $form['column_visibility'] = [
       '#type' => 'fieldset',
       '#title' => $this->t('Default Column Visibility'),
@@ -112,6 +124,7 @@ class ExcelEditorConfigForm extends ConfigFormBase {
     $alwaysVisible = array_filter($form_state->getValue('always_visible'));
 
     $this->config('excel_editor.settings')
+      ->set('autosave_enabled', $form_state->getValue('autosave_enabled'))
       ->set('default_visible_columns', $columnArray)
       ->set('hide_behavior', $form_state->getValue('hide_behavior'))
       ->set('always_visible', $alwaysVisible)
@@ -133,4 +146,5 @@ class ExcelEditorConfigForm extends ConfigFormBase {
     }
     return $columns;
   }
+
 }
