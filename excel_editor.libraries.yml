@@ -4,7 +4,18 @@ excel_editor:
     theme:
       css/excel-editor.css: {}
   js:
-    js/excel-editor.js: {}
+    # Utilities must load first
+    js/modules/utilities.js: { weight: -10 }
+    # Core modules in dependency order
+    js/modules/data-manager.js: { weight: -9 }
+    js/modules/barcode-system.js: { weight: -8 }
+    js/modules/ui-renderer.js: { weight: -7 }
+    js/modules/filter-manager.js: { weight: -6 }
+    js/modules/column-manager.js: { weight: -5 }
+    js/modules/draft-manager.js: { weight: -4 }
+    js/modules/export-manager.js: { weight: -3 }
+    # Main class loads last
+    js/excel-editor.js: { weight: -2 }
   dependencies:
     - core/drupal
     - core/jquery
