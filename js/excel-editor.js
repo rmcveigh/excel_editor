@@ -57,15 +57,15 @@
       // DOM element cache
       this.elements = {};
 
-      // Initialize modules - these add methods to this class instance
+      // Initialize modules - FIXED ORDER: BarcodeSystem before DataManager
       if (typeof ExcelEditorUtilities !== 'undefined') {
         ExcelEditorUtilities.call(this);
       }
-      if (typeof ExcelEditorDataManager !== 'undefined') {
-        ExcelEditorDataManager.call(this);
-      }
       if (typeof ExcelEditorBarcodeSystem !== 'undefined') {
         ExcelEditorBarcodeSystem.call(this);
+      }
+      if (typeof ExcelEditorDataManager !== 'undefined') {
+        ExcelEditorDataManager.call(this);
       }
       if (typeof ExcelEditorUIRenderer !== 'undefined') {
         ExcelEditorUIRenderer.call(this);
@@ -75,6 +75,9 @@
       }
       if (typeof ExcelEditorColumnManager !== 'undefined') {
         ExcelEditorColumnManager.call(this);
+      }
+      if (typeof ExcelEditorValidationManager !== 'undefined') {
+        ExcelEditorValidationManager.call(this);
       }
       if (typeof ExcelEditorDraftManager !== 'undefined') {
         ExcelEditorDraftManager.call(this);
@@ -134,6 +137,7 @@
         'ExcelEditorUIRenderer',
         'ExcelEditorFilterManager',
         'ExcelEditorColumnManager',
+        'ExcelEditorValidationManager',
         'ExcelEditorDraftManager',
         'ExcelEditorExportManager',
       ];
@@ -173,6 +177,7 @@
         selectAllBtn: $('#select-all-visible-btn'),
         deselectAllBtn: $('#deselect-all-btn'),
         resetBarcodesBtn: $('#reset-barcodes-btn'),
+        validateBarcodesBtn: $('#validate-barcodes-btn'),
       };
       this.logDebug('Cached DOM elements');
     }
@@ -195,6 +200,7 @@
       this.elements.selectAllBtn.on('click', () => this.selectAllVisible());
       this.elements.deselectAllBtn.on('click', () => this.deselectAll());
       this.elements.resetBarcodesBtn.on('click', () => this.resetBarcodes());
+      this.elements.validateBarcodesBtn.on('click', () => this.showValidationSummary());
 
       // Table events
       this.bindTableEvents();
@@ -336,17 +342,15 @@
       this.data.dirty = true;
 
       const columnName = this.data.filtered[0][colIndex];
+
+      // Validate new_barcode fields
+      if (columnName === 'new_barcode') {
+        this.validateBarcodeField($cell, newValue, rowIndex);
+      }
+
       if (columnName === 'actions') {
         this.applyRowStyling();
       }
-
-      Drupal.debounce(() => {
-        this.showMessage(
-          'Changes detected. Remember to save your draft.',
-          'info',
-          3000
-        );
-      }, 1000)();
     }
 
     /**

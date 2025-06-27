@@ -155,7 +155,7 @@
     /**
      * Adds the default editable columns ('new_barcode', 'notes', 'actions')
      * to the dataset if they don't already exist.
-     * Auto-populates new_barcode with cleaned values using generic barcode formatter.
+     * Auto-populates new_barcode with values using either tissue research or generic formatter.
      */
     this.addEditableColumns = function () {
       if (!this.data.original.length) return;
@@ -167,28 +167,130 @@
         return;
       }
 
-      // Find source and context columns
-      const sourceColumnIndex = this.findColumnByType(headerRow, 'subject_id');
-      const healthStatusIndex = this.findColumnByType(
-        headerRow,
-        'health_status'
-      );
+      // Detect file type and find column indices BEFORE modifying the header
+      const isTissueResearchFile = this.detectTissueResearchFile(headerRow);
 
-      // Add new column headers
+      // Find column indices in the original header row (DON'T adjust these)
+      let columnIndices = {};
+      if (isTissueResearchFile) {
+        columnIndices = {
+          subjectId: this.findTissueResearchColumn(headerRow, 'subject_id'),
+          biopsyType: this.findTissueResearchColumn(
+            headerRow,
+            'biopsy_necropsy'
+          ),
+          reqTissueType: this.findTissueResearchColumn(
+            headerRow,
+            'req_tissue_type'
+          ),
+          vialTissueType: this.findTissueResearchColumn(
+            headerRow,
+            'vial_tissue_type'
+          ),
+          healthStatus: this.findTissueResearchColumn(
+            headerRow,
+            'health_status'
+          ),
+        };
+        this.logDebug(
+          'Original tissue research column indices:',
+          columnIndices
+        );
+      } else {
+        columnIndices = {
+          subjectId: this.findColumnByType(headerRow, 'subject_id'),
+          healthStatus: this.findColumnByType(headerRow, 'health_status'),
+        };
+        this.logDebug('Original generic column indices:', columnIndices);
+      }
+
+      // NOW modify the header row
       headerRow.unshift('new_barcode');
       headerRow.push('notes', 'actions');
 
-      // Add data for each row
+      // Populate the data rows using the ORIGINAL indices (data rows haven't been modified yet)
+      if (isTissueResearchFile) {
+        this.populateTissueResearchBarcodesWithIndices(columnIndices);
+      } else {
+        this.populateGenericBarcodesWithIndices(columnIndices);
+      }
+
+      this.data.dirty = true;
+    };
+
+    /**
+     * Populates barcodes using the tissue research formatter with pre-calculated indices
+     * @param {Object} columnIndices - Pre-calculated column indices (from ORIGINAL header)
+     */
+    this.populateTissueResearchBarcodesWithIndices = function (columnIndices) {
+      let populatedCount = 0;
+      let errorCount = 0;
+
+      for (let i = 1; i < this.data.original.length; i++) {
+        const row = this.data.original[i];
+
+        try {
+          // Generate barcode value using tissue research formatter
+          // Use ORIGINAL indices since row hasn't been modified yet
+          let barcodeValue = '';
+          if (columnIndices.subjectId !== -1 && row[columnIndices.subjectId]) {
+            barcodeValue = this.formatTissueResearchBarcode(
+              row[columnIndices.subjectId],
+              columnIndices.biopsyType !== -1
+                ? row[columnIndices.biopsyType]
+                : '',
+              columnIndices.reqTissueType !== -1
+                ? row[columnIndices.reqTissueType]
+                : '',
+              columnIndices.vialTissueType !== -1
+                ? row[columnIndices.vialTissueType]
+                : '',
+              columnIndices.healthStatus !== -1
+                ? row[columnIndices.healthStatus]
+                : ''
+            );
+            populatedCount++;
+          }
+
+          // Add new columns: new_barcode (with auto-populated value), notes (empty), actions (empty)
+          row.unshift(barcodeValue);
+          row.push('', '');
+        } catch (error) {
+          this.logDebug(`Error generating barcode for row ${i}:`, error);
+          // Still add the columns even if barcode generation failed
+          row.unshift('');
+          row.push('', '');
+          errorCount++;
+        }
+      }
+
+      const message = `Auto-populated ${populatedCount} tissue research barcodes`;
+      this.logDebug(
+        message + (errorCount > 0 ? ` (${errorCount} errors)` : '')
+      );
+      this.showMessage(message, 'success', 4000);
+    };
+
+    /**
+     * Populates barcodes using the generic formatter with pre-calculated indices
+     * @param {Object} columnIndices - Pre-calculated column indices (from ORIGINAL header)
+     */
+    this.populateGenericBarcodesWithIndices = function (columnIndices) {
+      let populatedCount = 0;
+
       for (let i = 1; i < this.data.original.length; i++) {
         const row = this.data.original[i];
 
         // Generate barcode value using generic formatter
+        // Use ORIGINAL indices since row hasn't been modified yet
         let barcodeValue = '';
-        if (sourceColumnIndex !== -1 && row[sourceColumnIndex]) {
+        if (columnIndices.subjectId !== -1 && row[columnIndices.subjectId]) {
           const healthValue =
-            healthStatusIndex !== -1 ? row[healthStatusIndex] : null;
+            columnIndices.healthStatus !== -1
+              ? row[columnIndices.healthStatus]
+              : null;
           barcodeValue = this.formatBarcode(
-            row[sourceColumnIndex],
+            row[columnIndices.subjectId],
             {
               removeDashes: true,
               removeSpaces: true,
@@ -200,6 +302,7 @@
             healthValue,
             'health'
           );
+          populatedCount++;
         }
 
         // Add new columns: new_barcode (with auto-populated value), notes (empty), actions (empty)
@@ -207,20 +310,118 @@
         row.push('', '');
       }
 
-      this.data.dirty = true;
-
       // Log what happened for debugging
-      let message = '';
-      if (sourceColumnIndex !== -1) {
-        message = 'Auto-populated new_barcode column from source data';
-        if (healthStatusIndex !== -1) {
+      if (columnIndices.subjectId !== -1 && populatedCount > 0) {
+        let message = `Auto-populated ${populatedCount} generic barcodes from source data`;
+        if (columnIndices.healthStatus !== -1) {
           message += ' with context suffixes';
         }
         this.logDebug(
           message +
-            ` (Source: column ${sourceColumnIndex}, Context: column ${healthStatusIndex})`
+            ` (Source: original column ${
+              columnIndices.subjectId
+            }, Context: original column ${
+              columnIndices.healthStatus !== -1
+                ? columnIndices.healthStatus
+                : 'none'
+            })`
         );
-        this.showMessage(`${message} values`, 'success', 4000);
+        this.showMessage(message, 'success', 4000);
+      } else {
+        this.logDebug(
+          'No source column found - new_barcode column added empty'
+        );
+      }
+    };
+
+    /**
+     * Detects if this is a tissue research file by checking for required columns
+     * @param {Array} headerRow - The header row array
+     * @returns {boolean} True if tissue research file detected
+     */
+    this.detectTissueResearchFile = function (headerRow) {
+      const requiredColumns = [
+        'subject_id',
+        'biopsy_necropsy',
+        'req_tissue_type',
+        'vial_tissue_type',
+        'health_status',
+      ];
+
+      const foundColumns = requiredColumns.filter((colType) => {
+        const index = this.findTissueResearchColumn
+          ? this.findTissueResearchColumn(headerRow, colType)
+          : this.findColumnByType(headerRow, colType);
+        return index !== -1;
+      });
+
+      const isDetected = foundColumns.length >= 4; // Need at least 4 of 5 columns
+
+      this.logDebug(
+        `Tissue research file detection: ${isDetected ? 'YES' : 'NO'}`,
+        {
+          foundColumns,
+          totalFound: foundColumns.length,
+          required: requiredColumns.length,
+        }
+      );
+
+      return isDetected;
+    };
+
+    /**
+     * Populates barcodes using the generic formatter with pre-calculated indices
+     * @param {Object} columnIndices - Pre-calculated column indices
+     */
+    this.populateGenericBarcodesWithIndices = function (columnIndices) {
+      let populatedCount = 0;
+
+      for (let i = 1; i < this.data.original.length; i++) {
+        const row = this.data.original[i];
+
+        // Generate barcode value using generic formatter
+        let barcodeValue = '';
+        if (columnIndices.subjectId !== -1 && row[columnIndices.subjectId]) {
+          const healthValue =
+            columnIndices.healthStatus !== -1
+              ? row[columnIndices.healthStatus]
+              : null;
+          barcodeValue = this.formatBarcode(
+            row[columnIndices.subjectId],
+            {
+              removeDashes: true,
+              removeSpaces: true,
+              removeUnderscores: true,
+              removeDots: true,
+              toUpperCase: true,
+              includeContext: true,
+            },
+            healthValue,
+            'health'
+          );
+          populatedCount++;
+        }
+
+        // Add new columns: new_barcode (with auto-populated value), notes (empty), actions (empty)
+        row.unshift(barcodeValue);
+        row.push('', '');
+      }
+
+      // Log what happened for debugging
+      if (columnIndices.subjectId !== -1 && populatedCount > 0) {
+        let message = `Auto-populated ${populatedCount} generic barcodes from source data`;
+        if (columnIndices.healthStatus !== -1) {
+          message += ' with context suffixes';
+        }
+        this.logDebug(
+          message +
+            ` (Source: column ${columnIndices.subjectId - 1}, Context: column ${
+              columnIndices.healthStatus !== -1
+                ? columnIndices.healthStatus - 1
+                : 'none'
+            })`
+        );
+        this.showMessage(message, 'success', 4000);
       } else {
         this.logDebug(
           'No source column found - new_barcode column added empty'

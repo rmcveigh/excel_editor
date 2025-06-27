@@ -6,16 +6,18 @@ excel_editor:
   js:
     # Utilities must load first
     js/modules/utilities.js: { weight: -10 }
+    # Barcode system must load before data manager since data manager depends on it
+    js/modules/barcode-system.js: { weight: -9 }
     # Core modules in dependency order
-    js/modules/data-manager.js: { weight: -9 }
-    js/modules/barcode-system.js: { weight: -8 }
+    js/modules/data-manager.js: { weight: -8 }
     js/modules/ui-renderer.js: { weight: -7 }
     js/modules/filter-manager.js: { weight: -6 }
     js/modules/column-manager.js: { weight: -5 }
-    js/modules/draft-manager.js: { weight: -4 }
-    js/modules/export-manager.js: { weight: -3 }
+    js/modules/validation-manager.js: { weight: -4 }
+    js/modules/draft-manager.js: { weight: -3 }
+    js/modules/export-manager.js: { weight: -2 }
     # Main class loads last
-    js/excel-editor.js: { weight: -2 }
+    js/excel-editor.js: { weight: -1 }
   dependencies:
     - core/drupal
     - core/jquery
