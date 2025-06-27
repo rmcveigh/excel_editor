@@ -882,6 +882,13 @@ export class ExcelEditorBarcodeSystem {
             message,
             errors.length > 0 ? 'warning' : 'success'
           );
+
+          // Trigger validation after barcode reset
+          setTimeout(() => {
+            if (this.app.validationManager) {
+              this.app.validationManager.validateExistingBarcodeFields();
+            }
+          }, 200);
         } else {
           this.app.utilities.showMessage(
             'No source values found to convert',

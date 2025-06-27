@@ -31,11 +31,59 @@ export class ExcelEditorFilterManager {
       statusMessages += `<div class="field"><div class="notification is-primary is-light"><span class="icon"><i class="fas fa-cog"></i></span> Default column visibility applied. <button class="button is-small is-light ml-2" id="reset-to-defaults"><span>Reset to Defaults</span></button> <button class="button is-small is-light ml-2" id="show-all-override"><span>Show All</span></button></div></div>`;
     }
 
+    // Add validation filter controls
+    const validationControls = this.buildValidationFilterControls();
+
     this.app.elements.filtersContainer.html(
-      `${statusMessages} <div class="field mb-2" id="active-filters-container" style="display: none;"><label class="label">Active Filters:</label><div class="control" id="active-filters"></div><div class="control mt-2"><button class="button is-small is-light" id="clear-all-filters-btn"><span>Clear All Filters</span></button></div></div>`
+      `${statusMessages}
+       ${validationControls}
+       <div class="field mb-2" id="active-filters-container" style="display: none;">
+         <label class="label">Active Filters:</label>
+         <div class="control" id="active-filters"></div>
+         <div class="control mt-2">
+           <button class="button is-small is-light" id="clear-all-filters-btn"><span>Clear All Filters</span></button>
+         </div>
+       </div>`
     );
 
     this.bindFilterEvents();
+  }
+
+  /**
+   * Builds validation filter controls
+   * @return {string} HTML string for validation filter controls
+   */
+  buildValidationFilterControls() {
+    if (!this.app.validationManager) {
+      return '';
+    }
+
+    const stats = this.app.validationManager.getValidationRowStats();
+
+    if (stats.errorCount === 0) {
+      return ''; // No validation issues, don't show validation filters
+    }
+
+    let controls =
+      '<div class="field"><div class="notification is-danger is-light"><div class="field is-grouped is-grouped-multiline">';
+
+    // Title
+    controls +=
+      '<div class="control"><label class="label is-small has-text-danger"><span class="icon is-small"><i class="fas fa-exclamation-triangle"></i></span> Validation Issues Found:</label></div>';
+
+    // Prominent "Show Errors" button
+    controls += `
+      <div class="control">
+        <button class="button is-danger" id="filter-errors-btn">
+          <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+          <span><strong>Show All ${stats.errorCount} Error${
+      stats.errorCount !== 1 ? 's' : ''
+    }</strong></span>
+        </button>
+      </div>`;
+
+    controls += '</div></div></div>';
+    return controls;
   }
 
   /**
@@ -52,6 +100,11 @@ export class ExcelEditorFilterManager {
     );
     $('#show-all-override').on('click', () =>
       this.app.columnManager.showAllColumnsOverride()
+    );
+
+    // Validation filter events (only errors now)
+    $('#filter-errors-btn').on('click', () =>
+      this.applyValidationFilter('errors')
     );
   }
 
@@ -153,6 +206,7 @@ export class ExcelEditorFilterManager {
    * @param {number} columnIndex - The index of the column being filtered.
    * @param {string} header - The column header to display.
    */
+  // eslint-disable-next-line no-unused-vars
   bindFilterModalEvents(modal, columnIndex, header) {
     modal
       .find('.modal-close, #cancel-filter, .modal-background')
@@ -259,15 +313,29 @@ export class ExcelEditorFilterManager {
           this.app.data.original
         );
       } else {
-        this.app.data.filtered = [this.app.data.original[0]];
+        this.app.data.filtered = [this.app.data.original[0]]; // Keep header
+
+        // Check for validation filters
+        const validationFilter = this.app.state.currentFilters['_validation'];
+
         for (let i = 1; i < this.app.data.original.length; i++) {
           const row = this.app.data.original[i];
-          if (
-            Object.entries(this.app.state.currentFilters).every(
-              ([colIndex, filter]) =>
-                this.rowMatchesFilter(row[parseInt(colIndex)], filter)
-            )
-          ) {
+          let includeRow = true;
+
+          // Handle validation filter first (it's exclusive)
+          if (validationFilter) {
+            includeRow = validationFilter.targetRows.has(i);
+          } else {
+            // Apply regular filters
+            includeRow = Object.entries(this.app.state.currentFilters).every(
+              ([colIndex, filter]) => {
+                if (filter.type === 'validation') return true; // Skip validation filters in regular processing
+                return this.rowMatchesFilter(row[parseInt(colIndex)], filter);
+              }
+            );
+          }
+
+          if (includeRow) {
             this.app.data.filtered.push(row);
           }
         }
@@ -276,6 +344,13 @@ export class ExcelEditorFilterManager {
       this.app.data.selected.clear();
       await this.app.uiRenderer.renderTable();
       this.app.dataManager.updateSelectionCount();
+
+      // Trigger validation after filters are applied and table is re-rendered
+      if (this.app.validationManager) {
+        setTimeout(() => {
+          this.app.validationManager.validateExistingBarcodeFields();
+        }, 150);
+      }
     } finally {
       if (shouldShowLoader) {
         this.app.utilities.hideProcessLoader();
@@ -292,6 +367,13 @@ export class ExcelEditorFilterManager {
    * @return {boolean} - True if the cell value matches the filter, false otherwise.
    */
   rowMatchesFilter(cellValue, filter) {
+    // Handle validation filters specially
+    if (filter.type === 'validation') {
+      // For validation filters, we need the row index, which isn't passed to this method
+      // So validation filtering is handled in applyFilters() directly
+      return true;
+    }
+
     const originalValue = String(cellValue || '').trim();
     const value = filter.caseSensitive
       ? originalValue
@@ -412,11 +494,17 @@ export class ExcelEditorFilterManager {
 
     const filterTags = Object.entries(this.app.state.currentFilters)
       .map(([columnIndex, filter]) => {
-        const header = this.app.data.original[0][parseInt(columnIndex)];
-        const filterDescription = this.getFilterDescription(filter);
-        return `<span class="tag is-info"><strong>${this.app.utilities.escapeHtml(
-          header
-        )}</strong>: ${filterDescription}<button class="delete is-small ml-1" data-column="${columnIndex}"></button></span>`;
+        if (filter.type === 'validation') {
+          // Special handling for validation filters (now all errors)
+          return `<span class="tag is-danger"><strong>Validation Errors:</strong> ${filter.description}<button class="delete is-small ml-1" data-column="${columnIndex}"></button></span>`;
+        } else {
+          // Regular column filters
+          const header = this.app.data.original[0][parseInt(columnIndex)];
+          const filterDescription = this.getFilterDescription(filter);
+          return `<span class="tag is-info"><strong>${this.app.utilities.escapeHtml(
+            header
+          )}</strong>: ${filterDescription}<button class="delete is-small ml-1" data-column="${columnIndex}"></button></span>`;
+        }
       })
       .join(' ');
 
@@ -428,6 +516,9 @@ export class ExcelEditorFilterManager {
       delete this.app.state.currentFilters[columnIndex];
       this.applyFilters();
       this.updateActiveFiltersDisplay();
+
+      // Refresh validation filter controls when filters change
+      this.setupFilters();
     });
   }
 
@@ -438,6 +529,8 @@ export class ExcelEditorFilterManager {
    */
   getFilterDescription(filter) {
     switch (filter.type) {
+      case 'validation':
+        return filter.description;
       case 'quick':
         return `${filter.selected.length} selected`;
       case 'equals':
@@ -482,6 +575,62 @@ export class ExcelEditorFilterManager {
       activeFilters: Object.keys(this.app.state.currentFilters).length,
       hasFilters: Object.keys(this.app.state.currentFilters).length > 0,
     };
+  }
+
+  /**
+   * Applies validation-based filters (errors only)
+   * @param {string} filterType - The type of validation filter to apply ('errors' for now).
+   * @return {Promise<void>} - A promise that resolves when the filter is applied.
+   */
+  async applyValidationFilter(filterType) {
+    if (!this.app.validationManager) {
+      this.app.utilities.showMessage(
+        'Validation system not available',
+        'warning'
+      );
+      return;
+    }
+
+    this.app.utilities.showQuickLoader('Applying validation filter...');
+
+    try {
+      // Clear existing filters first
+      this.app.state.currentFilters = {};
+
+      const stats = this.app.validationManager.getValidationRowStats();
+      let targetRows = [];
+      let filterDescription = '';
+
+      if (filterType === 'errors') {
+        targetRows = stats.errorRows;
+        filterDescription = `${stats.errorCount} rows with errors`;
+      }
+
+      if (targetRows.length === 0) {
+        this.app.utilities.showMessage('No rows found with errors', 'info');
+        return;
+      }
+
+      // Apply the validation filter
+      this.app.state.currentFilters['_validation'] = {
+        type: 'validation',
+        filterType: filterType,
+        targetRows: new Set(targetRows),
+        description: filterDescription,
+      };
+
+      await this.applyFilters();
+      this.updateActiveFiltersDisplay();
+
+      this.app.utilities.showMessage(`Showing ${filterDescription}`, 'success');
+    } catch (error) {
+      this.app.utilities.handleError(
+        'Failed to apply validation filter',
+        error
+      );
+    } finally {
+      this.app.utilities.hideQuickLoader();
+    }
   }
 
   /**

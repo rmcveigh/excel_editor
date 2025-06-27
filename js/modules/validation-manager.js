@@ -32,23 +32,11 @@ export class ExcelEditorValidationManager {
     if (!validation.isValid) {
       // Has errors - red border
       $cell.addClass('is-danger');
-    } else if (validation.hasWarnings) {
-      // Has warnings but is valid - yellow border
-      $cell.addClass('is-warning');
-    } else {
-      // Completely valid - green border
-      $cell.addClass('is-valid');
     }
 
     // Add validation message if there are issues
     if (validation.messages.length > 0) {
-      const messageClass =
-        validation.isValid && !validation.hasWarnings
-          ? 'has-text-success'
-          : validation.hasWarnings && validation.isValid
-          ? 'has-text-warning'
-          : 'has-text-danger';
-      const messageHtml = `<div class="validation-message ${messageClass} is-size-7 mt-1">
+      const messageHtml = `<div class="validation-message has-text-danger is-size-7 mt-1">
         ${validation.messages
           .map((msg) => `<div>• ${this.app.utilities.escapeHtml(msg)}</div>`)
           .join('')}
@@ -78,12 +66,14 @@ export class ExcelEditorValidationManager {
         const rowIndex = parseInt($input.data('row'));
         const value = $input.val() || '';
 
-        // Validate all fields, including empty ones
-        this.validateBarcodeField($input, value.trim(), rowIndex);
+        // Only validate non-empty fields for auto-validation
+        if (value.trim()) {
+          this.validateBarcodeField($input, value.trim(), rowIndex);
+        }
       });
 
     this.app.utilities.logDebug(
-      'Validated all existing barcode fields on load'
+      'Auto-validated barcode fields after table load'
     );
   }
 
@@ -123,14 +113,14 @@ export class ExcelEditorValidationManager {
       );
     }
 
-    // Check for 'X' characters (warning, not error)
+    // Check for 'X' characters (now treated as ERROR, not warning)
     if (trimmedValue.includes('X')) {
-      result.hasWarnings = true;
+      result.isValid = false; // Changed from hasWarnings = true to isValid = false
       const xCount = (trimmedValue.match(/X/g) || []).length;
       result.messages.push(
         `Contains ${xCount} 'X' character${
           xCount > 1 ? 's' : ''
-        } (may indicate incomplete data)`
+        } (incomplete data)`
       );
     }
 
@@ -146,11 +136,6 @@ export class ExcelEditorValidationManager {
           duplicateInfo.count > 1 ? 's' : ''
         }`
       );
-    }
-
-    // If no errors but has warnings, it's still "valid" but with warnings
-    if (!result.isValid) {
-      result.hasWarnings = false; // Errors take precedence over warnings
     }
 
     return result;
@@ -198,7 +183,6 @@ export class ExcelEditorValidationManager {
     const summary = {
       totalBarcodes: 0,
       validBarcodes: 0,
-      warningBarcodes: 0,
       errorBarcodes: 0,
       emptyBarcodes: 0,
       issues: [],
@@ -226,16 +210,8 @@ export class ExcelEditorValidationManager {
       summary.totalBarcodes++;
       const validation = this.validateBarcode(barcode, i);
 
-      if (validation.isValid && !validation.hasWarnings) {
+      if (validation.isValid) {
         summary.validBarcodes++;
-      } else if (validation.hasWarnings && validation.isValid) {
-        summary.warningBarcodes++;
-        summary.issues.push({
-          row: i,
-          barcode: barcode,
-          type: 'warning',
-          messages: validation.messages,
-        });
       } else {
         summary.errorBarcodes++;
         summary.issues.push({
@@ -268,10 +244,6 @@ export class ExcelEditorValidationManager {
       errorRate:
         summary.totalBarcodes > 0
           ? ((summary.errorBarcodes / summary.totalBarcodes) * 100).toFixed(1)
-          : 0,
-      warningRate:
-        summary.totalBarcodes > 0
-          ? ((summary.warningBarcodes / summary.totalBarcodes) * 100).toFixed(1)
           : 0,
     };
   }
@@ -310,9 +282,6 @@ export class ExcelEditorValidationManager {
                   <strong class="has-text-success">✓ Valid:</strong> ${
                     summary.validBarcodes
                   }<br>
-                  <strong class="has-text-warning">⚠ Warnings:</strong> ${
-                    summary.warningBarcodes
-                  } (${stats.warningRate}%)<br>
                   <strong class="has-text-danger">✗ Errors:</strong> ${
                     summary.errorBarcodes
                   } (${stats.errorRate}%)<br>
@@ -329,7 +298,7 @@ export class ExcelEditorValidationManager {
               ${
                 summary.errorBarcodes > 0
                   ? `<div class="control">
-                      <button class="button is-warning" id="highlight-errors">Highlight Errors</button>
+                      <button class="button is-danger" id="highlight-errors">Highlight Errors</button>
                     </div>`
                   : ''
               }
@@ -369,7 +338,6 @@ export class ExcelEditorValidationManager {
     }
 
     const errorIssues = issues.filter((issue) => issue.type === 'error');
-    const warningIssues = issues.filter((issue) => issue.type === 'warning');
 
     let html = '<div class="field"><label class="label">Issues Found:</label>';
 
@@ -380,22 +348,6 @@ export class ExcelEditorValidationManager {
       errorIssues.forEach((issue) => {
         html += `
           <div class="notification is-danger is-light mb-2">
-            <strong>Row ${issue.row}:</strong> ${this.app.utilities.escapeHtml(
-          issue.barcode
-        )}<br>
-            <small>${issue.messages.join(', ')}</small>
-          </div>`;
-      });
-      html += '</div>';
-    }
-
-    if (warningIssues.length > 0) {
-      html +=
-        '<h5 class="title is-6 has-text-warning">Warnings (Review Recommended):</h5>';
-      html += '<div style="max-height: 200px; overflow-y: auto;">';
-      warningIssues.forEach((issue) => {
-        html += `
-          <div class="notification is-warning is-light mb-2">
             <strong>Row ${issue.row}:</strong> ${this.app.utilities.escapeHtml(
           issue.barcode
         )}<br>
@@ -459,6 +411,55 @@ export class ExcelEditorValidationManager {
   }
 
   /**
+   * Gets a list of row indices that have validation errors
+   * @return {Array} Array of row indices with validation errors
+   */
+  getRowsWithErrors() {
+    const errorRows = [];
+
+    if (!this.app.data.filtered || this.app.data.filtered.length <= 1) {
+      return errorRows;
+    }
+
+    const barcodeColumnIndex = this.app.data.filtered[0].indexOf('new_barcode');
+    if (barcodeColumnIndex === -1) {
+      return errorRows;
+    }
+
+    for (let i = 1; i < this.app.data.filtered.length; i++) {
+      const barcode = String(
+        this.app.data.filtered[i][barcodeColumnIndex] || ''
+      ).trim();
+
+      if (barcode) {
+        // Only check non-empty barcodes
+        const validation = this.validateBarcode(barcode, i);
+        if (!validation.isValid) {
+          errorRows.push(i);
+        }
+      }
+    }
+
+    return errorRows;
+  }
+
+  /**
+   * Gets validation statistics including row counts
+   * @return {Object} Object containing error row count, total rows, and error status
+   */
+  getValidationRowStats() {
+    const errorRows = this.getRowsWithErrors();
+    const totalRows = this.app.data.filtered.length - 1; // Exclude header
+
+    return {
+      errorRows,
+      errorCount: errorRows.length,
+      totalRows,
+      hasErrors: errorRows.length > 0,
+    };
+  }
+
+  /**
    * Checks if the dataset has any validation issues
    * @return {boolean} True if there are validation errors, false otherwise
    */
@@ -493,16 +494,6 @@ export class ExcelEditorValidationManager {
       };
     }
 
-    if (summary.warningBarcodes > 0) {
-      return {
-        status: 'warning',
-        message: `${summary.warningBarcodes} warning${
-          summary.warningBarcodes > 1 ? 's' : ''
-        }`,
-        class: 'is-warning',
-      };
-    }
-
     return {
       status: 'valid',
       message: `All ${summary.validBarcodes} barcodes valid`,
@@ -525,7 +516,7 @@ export class ExcelEditorValidationManager {
       `Warning: ${summary.errorBarcodes} barcode${
         summary.errorBarcodes > 1 ? 's have' : ' has'
       } validation errors. ` +
-        `Export anyway? Errors include duplicate barcodes and invalid lengths.`
+        `Export anyway? Errors include duplicate barcodes, invalid lengths, and incomplete data ('X' characters).`
     );
 
     return proceed;

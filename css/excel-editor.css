@@ -2,16 +2,6 @@
    Barcode Validation Styles
    ========================================================================== */
 
-.excel-editor-cell.is-valid {
-  border-color: #48c774 !important;
-  box-shadow: 0 0 0 0.125em rgba(72, 199, 116, 0.25) !important;
-}
-
-.excel-editor-cell.is-warning {
-  border-color: #ffdd57 !important;
-  box-shadow: 0 0 0 0.125em rgba(255, 221, 87, 0.25) !important;
-}
-
 .excel-editor-cell.is-danger {
   border-color: #f14668 !important;
   box-shadow: 0 0 0 0.125em rgba(241, 70, 104, 0.25) !important;

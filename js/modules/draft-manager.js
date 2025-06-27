@@ -331,6 +331,13 @@ export class ExcelEditorDraftManager {
     this.app.filterManager.applyFilters();
     this.app.filterManager.updateActiveFiltersDisplay();
     this.app.dataManager.updateSelectionCount();
+
+    // Trigger validation after draft is loaded
+    setTimeout(() => {
+      if (this.app.validationManager) {
+        this.app.validationManager.validateExistingBarcodeFields();
+      }
+    }, 200);
   }
 
   /**

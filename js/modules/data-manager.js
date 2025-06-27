@@ -44,8 +44,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Parses CSV data from an ArrayBuffer.
-   * @param {ArrayBuffer} data - The CSV data as an ArrayBuffer.
-   * @return {Array} Parsed CSV data as an array of arrays.
    */
   parseCSV(data) {
     const text = new TextDecoder().decode(data);
@@ -59,7 +57,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Parses Excel (.xls, .xlsx) data from an ArrayBuffer using SheetJS.
-   * @param {ArrayBuffer} data - The Excel data as an ArrayBuffer.
    */
   async parseExcel(data) {
     return new Promise((resolve, reject) => {
@@ -111,7 +108,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Loads the parsed data into the application's state.
-   * @param {Array} data - The parsed data as an array of arrays.
    */
   loadData(data) {
     this.app.utilities.logDebug('Loading data into application...', data);
@@ -136,6 +132,13 @@ export class ExcelEditorDataManager {
     this.applyDefaultColumnVisibility();
     this.app.uiRenderer.renderInterface();
     this.updateSelectionCount();
+
+    // Trigger initial validation after data is loaded and interface is rendered
+    setTimeout(() => {
+      if (this.app.validationManager) {
+        this.app.validationManager.validateExistingBarcodeFields();
+      }
+    }, 200);
   }
 
   /**
@@ -218,7 +221,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Populates barcodes using the tissue research formatter with pre-calculated indices
-   * @param {Object} columnIndices - Indices of relevant columns in the original data
    */
   populateTissueResearchBarcodesWithIndices(columnIndices) {
     let populatedCount = 0;
@@ -270,7 +272,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Populates barcodes using the generic formatter with pre-calculated indices
-   * @param {Object} columnIndices - Indices of relevant columns in the original data
    */
   populateGenericBarcodesWithIndices(columnIndices) {
     let populatedCount = 0;
@@ -320,7 +321,6 @@ export class ExcelEditorDataManager {
 
   /**
    * Detects if this is a tissue research file by checking for required columns
-   * @param {Array} headerRow - The first row of the dataset containing column headers
    */
   detectTissueResearchFile(headerRow) {
     const requiredColumns = [

@@ -24,7 +24,9 @@ export class ExcelEditorUIRenderer {
    */
   async renderTable() {
     if (!this.app.data.filtered.length) {
-      this.app.elements.tableContainer.html('<p class="has-text-centered">No data available</p>');
+      this.app.elements.tableContainer.html(
+        '<p class="has-text-centered">No data available</p>'
+      );
       return;
     }
 
@@ -49,6 +51,18 @@ export class ExcelEditorUIRenderer {
       this.app.elements.table = jQuery('#excel-table');
       this.app.bindTableEvents();
       this.app.dataManager.applyRowStyling();
+
+      // Auto-validate barcode fields after table is rendered
+      if (this.app.validationManager) {
+        // Small delay to ensure DOM is fully updated
+        setTimeout(() => {
+          this.app.validationManager.validateExistingBarcodeFields();
+          // Refresh filter controls to update validation filter counts
+          if (this.app.filterManager) {
+            this.app.filterManager.setupFilters();
+          }
+        }, 100);
+      }
     } finally {
       if (shouldShowLoader) {
         this.app.utilities.hideProcessLoader();
@@ -63,13 +77,16 @@ export class ExcelEditorUIRenderer {
   createTableHeader() {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    headerRow.innerHTML = '<th class="selection-column"><label class="checkbox"><input type="checkbox" id="select-all-checkbox" /></label></th>';
+    headerRow.innerHTML =
+      '<th class="selection-column"><label class="checkbox"><input type="checkbox" id="select-all-checkbox" /></label></th>';
 
     this.app.data.filtered[0].forEach((header, index) => {
       if (!this.app.state.hiddenColumns.has(index)) {
         const th = document.createElement('th');
         th.dataset.column = index;
-        th.innerHTML = `${this.app.utilities.escapeHtml(header)}<br><small><a href="#" class="filter-link" data-column="${index}">Filter</a></small>`;
+        th.innerHTML = `${this.app.utilities.escapeHtml(
+          header
+        )}<br><small><a href="#" class="filter-link" data-column="${index}">Filter</a></small>`;
         headerRow.appendChild(th);
       }
     });
@@ -125,7 +142,9 @@ export class ExcelEditorUIRenderer {
     const isSelected = this.app.data.selected.has(rowIndex);
     if (isSelected) row.classList.add('selected-row');
 
-    row.innerHTML = `<td class="selection-column"><label class="checkbox"><input type="checkbox" class="row-checkbox" data-row="${rowIndex}" ${isSelected ? 'checked' : ''} /></label></td>`;
+    row.innerHTML = `<td class="selection-column"><label class="checkbox"><input type="checkbox" class="row-checkbox" data-row="${rowIndex}" ${
+      isSelected ? 'checked' : ''
+    } /></label></td>`;
 
     rowData.forEach((cell, colIndex) => {
       if (!this.app.state.hiddenColumns.has(colIndex)) {
@@ -151,16 +170,27 @@ export class ExcelEditorUIRenderer {
       td.className = 'editable-column';
       if (columnName === 'actions') {
         td.classList.add('actions-column');
-        td.innerHTML = this.createActionsDropdown(rowIndex, colIndex, cellValue);
+        td.innerHTML = this.createActionsDropdown(
+          rowIndex,
+          colIndex,
+          cellValue
+        );
       } else if (columnName === 'notes') {
         td.classList.add('notes-column');
         td.innerHTML = this.createNotesTextarea(rowIndex, colIndex, cellValue);
       } else {
-        td.innerHTML = this.createTextInput(rowIndex, colIndex, cellValue, 'Enter barcode...');
+        td.innerHTML = this.createTextInput(
+          rowIndex,
+          colIndex,
+          cellValue,
+          'Enter barcode...'
+        );
       }
     } else {
       td.className = 'readonly-cell';
-      td.innerHTML = `<span class="excel-editor-readonly">${this.app.utilities.escapeHtml(cellValue || '')}</span>`;
+      td.innerHTML = `<span class="excel-editor-readonly">${this.app.utilities.escapeHtml(
+        cellValue || ''
+      )}</span>`;
     }
     return td;
   }
@@ -179,7 +209,15 @@ export class ExcelEditorUIRenderer {
       pending: value === 'pending' ? 'selected' : '',
       discard: value === 'discard' ? 'selected' : '',
     };
-    return `<div class="select is-small is-fullwidth"><select class="excel-editor-cell editable actions-dropdown" data-row="${rowIndex}" data-col="${colIndex}"><option value="" ${selected['']}>${Drupal.t('-- Select Action --')}</option><option value="relabel" ${selected['relabel']}>${Drupal.t('Relabel')}</option><option value="pending" ${selected['pending']}>${Drupal.t('Pending')}</option><option value="discard" ${selected['discard']}>${Drupal.t('Discard')}</option></select></div>`;
+    return `<div class="select is-small is-fullwidth"><select class="excel-editor-cell editable actions-dropdown" data-row="${rowIndex}" data-col="${colIndex}"><option value="" ${
+      selected['']
+    }>${Drupal.t('-- Select Action --')}</option><option value="relabel" ${
+      selected['relabel']
+    }>${Drupal.t('Relabel')}</option><option value="pending" ${
+      selected['pending']
+    }>${Drupal.t('Pending')}</option><option value="discard" ${
+      selected['discard']
+    }>${Drupal.t('Discard')}</option></select></div>`;
   }
 
   /**
@@ -190,7 +228,9 @@ export class ExcelEditorUIRenderer {
    * @return {string} The HTML string for the textarea.
    */
   createNotesTextarea(rowIndex, colIndex, value) {
-    return `<textarea class="excel-editor-cell editable notes-textarea" data-row="${rowIndex}" data-col="${colIndex}" placeholder="${Drupal.t('Add notes...')}" rows="2">${this.app.utilities.escapeHtml(value || '')}</textarea>`;
+    return `<textarea class="excel-editor-cell editable notes-textarea" data-row="${rowIndex}" data-col="${colIndex}" placeholder="${Drupal.t(
+      'Add notes...'
+    )}" rows="2">${this.app.utilities.escapeHtml(value || '')}</textarea>`;
   }
 
   /**
@@ -201,7 +241,9 @@ export class ExcelEditorUIRenderer {
    * @return {string} The HTML string for the input.
    */
   createTextInput(rowIndex, colIndex, value, placeholder) {
-    return `<input type="text" class="excel-editor-cell editable" data-row="${rowIndex}" data-col="${colIndex}" value="${this.app.utilities.escapeHtml(value || '')}" placeholder="${Drupal.t(placeholder)}" />`;
+    return `<input type="text" class="excel-editor-cell editable" data-row="${rowIndex}" data-col="${colIndex}" value="${this.app.utilities.escapeHtml(
+      value || ''
+    )}" placeholder="${Drupal.t(placeholder)}" />`;
   }
 
   /**
@@ -225,7 +267,14 @@ export class ExcelEditorUIRenderer {
     const sizeClass = settings.size ? `modal-${settings.size}` : '';
 
     const footerHtml = settings.showFooter
-      ? `<footer class="modal-card-foot">${settings.footerButtons.map((btn) => `<button class="button ${btn.class || ''}" id="${btn.id || ''}">${btn.text}</button>`).join('')}</footer>`
+      ? `<footer class="modal-card-foot">${settings.footerButtons
+          .map(
+            (btn) =>
+              `<button class="button ${btn.class || ''}" id="${btn.id || ''}">${
+                btn.text
+              }</button>`
+          )
+          .join('')}</footer>`
       : '';
 
     const modalHtml = `
@@ -233,8 +282,14 @@ export class ExcelEditorUIRenderer {
         <div class="modal-background"></div>
         <div class="modal-card ${sizeClass}">
           <header class="modal-card-head">
-            <p class="modal-card-title">${this.app.utilities.escapeHtml(title)}</p>
-            ${settings.showCloseButton ? '<button class="delete" aria-label="close"></button>' : ''}
+            <p class="modal-card-title">${this.app.utilities.escapeHtml(
+              title
+            )}</p>
+            ${
+              settings.showCloseButton
+                ? '<button class="delete" aria-label="close"></button>'
+                : ''
+            }
           </header>
           <section class="modal-card-body">${content}</section>
           ${footerHtml}
@@ -245,7 +300,9 @@ export class ExcelEditorUIRenderer {
     jQuery('body').append(modal);
 
     if (settings.showCloseButton) {
-      modal.find('.delete, .modal-background').on('click', () => modal.remove());
+      modal
+        .find('.delete, .modal-background')
+        .on('click', () => modal.remove());
     }
 
     return modal;
@@ -322,7 +379,9 @@ export class ExcelEditorUIRenderer {
 
     updates.forEach((update) => {
       const { row, col, value } = update;
-      const cell = this.app.elements.table.find(`[data-row="${row}"][data-col="${col}"]`);
+      const cell = this.app.elements.table.find(
+        `[data-row="${row}"][data-col="${col}"]`
+      );
       if (cell.length) {
         if (cell.is('input, textarea, select')) {
           cell.val(value);
@@ -366,7 +425,8 @@ export class ExcelEditorUIRenderer {
     if (row.length) {
       this.app.elements.tableContainer.animate(
         {
-          scrollTop: row.offset().top - this.app.elements.tableContainer.offset().top,
+          scrollTop:
+            row.offset().top - this.app.elements.tableContainer.offset().top,
         },
         500
       );
@@ -382,17 +442,20 @@ export class ExcelEditorUIRenderer {
 
     if (isMobile) {
       this.app.elements.tableContainer.addClass('mobile-view');
-      const lessImportantColumns = this.app.data.filtered[0]
-        ?.map((header, index) => {
-          if (
-            !this.app.config.editableColumns.includes(header) &&
-            !['id', 'name', 'title'].some((key) => header.toLowerCase().includes(key))
-          ) {
-            return index;
-          }
-          return null;
-        })
-        .filter((index) => index !== null) || [];
+      const lessImportantColumns =
+        this.app.data.filtered[0]
+          ?.map((header, index) => {
+            if (
+              !this.app.config.editableColumns.includes(header) &&
+              !['id', 'name', 'title'].some((key) =>
+                header.toLowerCase().includes(key)
+              )
+            ) {
+              return index;
+            }
+            return null;
+          })
+          .filter((index) => index !== null) || [];
 
       lessImportantColumns.slice(3).forEach((colIndex) => {
         this.app.state.hiddenColumns.add(colIndex);
@@ -422,9 +485,14 @@ export class ExcelEditorUIRenderer {
   /**
    * Debounced table update to prevent excessive re-renders.
    */
-  debouncedTableUpdate = this.app.utilities.debounce(function() {
-    this.renderTable();
-  }, 250);
+  getDebouncedTableUpdate() {
+    if (!this._debouncedTableUpdate) {
+      this._debouncedTableUpdate = this.app.utilities.debounce(() => {
+        this.renderTable();
+      }, 250);
+    }
+    return this._debouncedTableUpdate;
+  }
 
   /**
    * Saves the current table state for restoration.
