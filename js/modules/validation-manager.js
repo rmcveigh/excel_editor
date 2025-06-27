@@ -53,10 +53,16 @@
 
       // Add validation message if there are issues
       if (validation.messages.length > 0) {
-        const messageClass = validation.isValid && !validation.hasWarnings ? 'has-text-success' :
-                            validation.hasWarnings && validation.isValid ? 'has-text-warning' : 'has-text-danger';
+        const messageClass =
+          validation.isValid && !validation.hasWarnings
+            ? 'has-text-success'
+            : validation.hasWarnings && validation.isValid
+            ? 'has-text-warning'
+            : 'has-text-danger';
         const messageHtml = `<div class="validation-message ${messageClass} is-size-7 mt-1">
-          ${validation.messages.map(msg => `<div>• ${this.escapeHtml(msg)}</div>`).join('')}
+          ${validation.messages
+            .map((msg) => `<div>• ${this.escapeHtml(msg)}</div>`)
+            .join('')}
         </div>`;
         $cell.after(messageHtml);
       }
@@ -76,14 +82,16 @@
       }
 
       // Find all barcode input fields and validate them
-      this.elements.tableContainer.find('input[data-col="' + barcodeColumnIndex + '"]').each((index, input) => {
-        const $input = $(input);
-        const rowIndex = parseInt($input.data('row'));
-        const value = $input.val() || '';
+      this.elements.tableContainer
+        .find('input[data-col="' + barcodeColumnIndex + '"]')
+        .each((index, input) => {
+          const $input = $(input);
+          const rowIndex = parseInt($input.data('row'));
+          const value = $input.val() || '';
 
-        // Validate all fields, including empty ones
-        this.validateBarcodeField($input, value.trim(), rowIndex);
-      });
+          // Validate all fields, including empty ones
+          this.validateBarcodeField($input, value.trim(), rowIndex);
+        });
 
       this.logDebug('Validated all existing barcode fields on load');
     };
@@ -112,7 +120,7 @@
       const result = {
         isValid: true,
         hasWarnings: false,
-        messages: []
+        messages: [],
       };
 
       if (!value || value.trim() === '') {
@@ -124,21 +132,34 @@
       // Check length (16-17 characters)
       if (trimmedValue.length < 16 || trimmedValue.length > 17) {
         result.isValid = false;
-        result.messages.push(`Length should be 16-17 characters (current: ${trimmedValue.length})`);
+        result.messages.push(
+          `Length should be 16-17 characters (current: ${trimmedValue.length})`
+        );
       }
 
       // Check for 'X' characters (warning, not error)
       if (trimmedValue.includes('X')) {
         result.hasWarnings = true;
         const xCount = (trimmedValue.match(/X/g) || []).length;
-        result.messages.push(`Contains ${xCount} 'X' character${xCount > 1 ? 's' : ''} (may indicate incomplete data)`);
+        result.messages.push(
+          `Contains ${xCount} 'X' character${
+            xCount > 1 ? 's' : ''
+          } (may indicate incomplete data)`
+        );
       }
 
       // Check for duplicates
-      const duplicateInfo = this.findBarcodeDuplicates(trimmedValue, excludeRowIndex);
+      const duplicateInfo = this.findBarcodeDuplicates(
+        trimmedValue,
+        excludeRowIndex
+      );
       if (duplicateInfo.isDuplicate) {
         result.isValid = false;
-        result.messages.push(`Duplicate barcode found in ${duplicateInfo.count} other row${duplicateInfo.count > 1 ? 's' : ''}`);
+        result.messages.push(
+          `Duplicate barcode found in ${duplicateInfo.count} other row${
+            duplicateInfo.count > 1 ? 's' : ''
+          }`
+        );
       }
 
       // If no errors but has warnings, it's still "valid" but with warnings
@@ -169,7 +190,9 @@
       for (let i = 1; i < this.data.filtered.length; i++) {
         if (i === excludeRowIndex) continue; // Skip the row we're currently editing
 
-        const rowBarcode = String(this.data.filtered[i][barcodeColumnIndex] || '').trim();
+        const rowBarcode = String(
+          this.data.filtered[i][barcodeColumnIndex] || ''
+        ).trim();
         if (rowBarcode === barcode && rowBarcode !== '') {
           duplicateCount++;
         }
@@ -177,7 +200,7 @@
 
       return {
         isDuplicate: duplicateCount > 0,
-        count: duplicateCount
+        count: duplicateCount,
       };
     };
 
@@ -196,7 +219,7 @@
         warningBarcodes: 0,
         errorBarcodes: 0,
         emptyBarcodes: 0,
-        issues: []
+        issues: [],
       };
 
       if (!this.data.filtered || this.data.filtered.length <= 1) {
@@ -209,7 +232,9 @@
       }
 
       for (let i = 1; i < this.data.filtered.length; i++) {
-        const barcode = String(this.data.filtered[i][barcodeColumnIndex] || '').trim();
+        const barcode = String(
+          this.data.filtered[i][barcodeColumnIndex] || ''
+        ).trim();
 
         if (!barcode) {
           summary.emptyBarcodes++;
@@ -227,7 +252,7 @@
             row: i,
             barcode: barcode,
             type: 'warning',
-            messages: validation.messages
+            messages: validation.messages,
           });
         } else {
           summary.errorBarcodes++;
@@ -235,7 +260,7 @@
             row: i,
             barcode: barcode,
             type: 'error',
-            messages: validation.messages
+            messages: validation.messages,
           });
         }
       }
@@ -254,9 +279,20 @@
       return {
         ...summary,
         totalFields,
-        completionRate: totalFields > 0 ? ((summary.totalBarcodes / totalFields) * 100).toFixed(1) : 0,
-        errorRate: summary.totalBarcodes > 0 ? ((summary.errorBarcodes / summary.totalBarcodes) * 100).toFixed(1) : 0,
-        warningRate: summary.totalBarcodes > 0 ? ((summary.warningBarcodes / summary.totalBarcodes) * 100).toFixed(1) : 0
+        completionRate:
+          totalFields > 0
+            ? ((summary.totalBarcodes / totalFields) * 100).toFixed(1)
+            : 0,
+        errorRate:
+          summary.totalBarcodes > 0
+            ? ((summary.errorBarcodes / summary.totalBarcodes) * 100).toFixed(1)
+            : 0,
+        warningRate:
+          summary.totalBarcodes > 0
+            ? ((summary.warningBarcodes / summary.totalBarcodes) * 100).toFixed(
+                1
+              )
+            : 0,
       };
     };
 
@@ -286,16 +322,24 @@
                   <div class="notification is-light">
                     <h4 class="title is-6">Field Status</h4>
                     <strong>Total Fields:</strong> ${stats.totalFields}<br>
-                    <strong>Completed:</strong> ${summary.totalBarcodes} (${stats.completionRate}%)<br>
+                    <strong>Completed:</strong> ${summary.totalBarcodes} (${
+        stats.completionRate
+      }%)<br>
                     <strong>Empty:</strong> ${summary.emptyBarcodes}<br>
                   </div>
                 </div>
                 <div class="column is-half">
                   <div class="notification is-light">
                     <h4 class="title is-6">Validation Results</h4>
-                    <strong class="has-text-success">✓ Valid:</strong> ${summary.validBarcodes}<br>
-                    <strong class="has-text-warning">⚠ Warnings:</strong> ${summary.warningBarcodes} (${stats.warningRate}%)<br>
-                    <strong class="has-text-danger">✗ Errors:</strong> ${summary.errorBarcodes} (${stats.errorRate}%)<br>
+                    <strong class="has-text-success">✓ Valid:</strong> ${
+                      summary.validBarcodes
+                    }<br>
+                    <strong class="has-text-warning">⚠ Warnings:</strong> ${
+                      summary.warningBarcodes
+                    } (${stats.warningRate}%)<br>
+                    <strong class="has-text-danger">✗ Errors:</strong> ${
+                      summary.errorBarcodes
+                    } (${stats.errorRate}%)<br>
                   </div>
                 </div>
               </div>
@@ -306,11 +350,15 @@
                 <div class="control">
                   <button class="button" id="close-validation-summary">Close</button>
                 </div>
-                ${summary.errorBarcodes > 0 ? `
+                ${
+                  summary.errorBarcodes > 0
+                    ? `
                 <div class="control">
                   <button class="button is-warning" id="highlight-errors">Highlight Errors</button>
                 </div>
-                ` : ''}
+                `
+                    : ''
+                }
               </div>
             </div>
           </div>
@@ -321,7 +369,8 @@
       $('body').append(modal);
 
       // Bind close events
-      modal.find('.modal-close, #close-validation-summary, .modal-background')
+      modal
+        .find('.modal-close, #close-validation-summary, .modal-background')
         .on('click', () => modal.remove());
 
       // Bind highlight errors button
@@ -345,18 +394,23 @@
           </div>`;
       }
 
-      const errorIssues = issues.filter(issue => issue.type === 'error');
-      const warningIssues = issues.filter(issue => issue.type === 'warning');
+      const errorIssues = issues.filter((issue) => issue.type === 'error');
+      const warningIssues = issues.filter((issue) => issue.type === 'warning');
 
-      let html = '<div class="field"><label class="label">Issues Found:</label>';
+      let html =
+        '<div class="field"><label class="label">Issues Found:</label>';
 
       if (errorIssues.length > 0) {
-        html += '<h5 class="title is-6 has-text-danger">Errors (Must Fix):</h5>';
-        html += '<div style="max-height: 200px; overflow-y: auto; margin-bottom: 1rem;">';
-        errorIssues.forEach(issue => {
+        html +=
+          '<h5 class="title is-6 has-text-danger">Errors (Must Fix):</h5>';
+        html +=
+          '<div style="max-height: 200px; overflow-y: auto; margin-bottom: 1rem;">';
+        errorIssues.forEach((issue) => {
           html += `
             <div class="notification is-danger is-light mb-2">
-              <strong>Row ${issue.row}:</strong> ${this.escapeHtml(issue.barcode)}<br>
+              <strong>Row ${issue.row}:</strong> ${this.escapeHtml(
+            issue.barcode
+          )}<br>
               <small>${issue.messages.join(', ')}</small>
             </div>`;
         });
@@ -364,12 +418,15 @@
       }
 
       if (warningIssues.length > 0) {
-        html += '<h5 class="title is-6 has-text-warning">Warnings (Review Recommended):</h5>';
+        html +=
+          '<h5 class="title is-6 has-text-warning">Warnings (Review Recommended):</h5>';
         html += '<div style="max-height: 200px; overflow-y: auto;">';
-        warningIssues.forEach(issue => {
+        warningIssues.forEach((issue) => {
           html += `
             <div class="notification is-warning is-light mb-2">
-              <strong>Row ${issue.row}:</strong> ${this.escapeHtml(issue.barcode)}<br>
+              <strong>Row ${issue.row}:</strong> ${this.escapeHtml(
+            issue.barcode
+          )}<br>
               <small>${issue.messages.join(', ')}</small>
             </div>`;
         });
@@ -395,14 +452,23 @@
       }
 
       // First scroll to the first error
-      const firstError = issues.find(issue => issue.type === 'error');
+      const firstError = issues.find((issue) => issue.type === 'error');
       if (firstError) {
-        const $errorCell = this.elements.tableContainer.find(`input[data-row="${firstError.row}"][data-col="${barcodeColumnIndex}"]`);
+        const $errorCell = this.elements.tableContainer.find(
+          `input[data-row="${firstError.row}"][data-col="${barcodeColumnIndex}"]`
+        );
         if ($errorCell.length) {
           // Scroll to the cell
-          this.elements.tableContainer.animate({
-            scrollTop: $errorCell.offset().top - this.elements.tableContainer.offset().top + this.elements.tableContainer.scrollTop() - 100
-          }, 500);
+          this.elements.tableContainer.animate(
+            {
+              scrollTop:
+                $errorCell.offset().top -
+                this.elements.tableContainer.offset().top +
+                this.elements.tableContainer.scrollTop() -
+                100,
+            },
+            500
+          );
 
           // Focus the cell
           setTimeout(() => {
@@ -411,7 +477,13 @@
         }
       }
 
-      this.showMessage(`Highlighted ${issues.filter(i => i.type === 'error').length} validation errors. Check the barcode fields with red borders.`, 'warning', 5000);
+      this.showMessage(
+        `Highlighted ${
+          issues.filter((i) => i.type === 'error').length
+        } validation errors. Check the barcode fields with red borders.`,
+        'warning',
+        5000
+      );
     };
 
     // =========================================================================
@@ -439,30 +511,34 @@
         return {
           status: 'empty',
           message: 'No barcodes to validate',
-          class: 'is-light'
+          class: 'is-light',
         };
       }
 
       if (summary.errorBarcodes > 0) {
         return {
           status: 'error',
-          message: `${summary.errorBarcodes} error${summary.errorBarcodes > 1 ? 's' : ''}`,
-          class: 'is-danger'
+          message: `${summary.errorBarcodes} error${
+            summary.errorBarcodes > 1 ? 's' : ''
+          }`,
+          class: 'is-danger',
         };
       }
 
       if (summary.warningBarcodes > 0) {
         return {
           status: 'warning',
-          message: `${summary.warningBarcodes} warning${summary.warningBarcodes > 1 ? 's' : ''}`,
-          class: 'is-warning'
+          message: `${summary.warningBarcodes} warning${
+            summary.warningBarcodes > 1 ? 's' : ''
+          }`,
+          class: 'is-warning',
         };
       }
 
       return {
         status: 'valid',
         message: `All ${summary.validBarcodes} barcodes valid`,
-        class: 'is-success'
+        class: 'is-success',
       };
     };
 
@@ -478,8 +554,10 @@
       }
 
       const proceed = confirm(
-        `Warning: ${summary.errorBarcodes} barcode${summary.errorBarcodes > 1 ? 's have' : ' has'} validation errors. ` +
-        `Export anyway? Errors include duplicate barcodes and invalid lengths.`
+        `Warning: ${summary.errorBarcodes} barcode${
+          summary.errorBarcodes > 1 ? 's have' : ' has'
+        } validation errors. ` +
+          `Export anyway? Errors include duplicate barcodes and invalid lengths.`
       );
 
       return proceed;
