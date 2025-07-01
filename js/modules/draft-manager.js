@@ -9,93 +9,131 @@ export class ExcelEditorDraftManager {
   }
 
   /**
-   * Shows a modal to ask the user for a draft name before saving manually.
-   * @returns {Promise<void>} - Resolves when the draft is saved or canceled.
+   * Prepare the draft data for saving
+   * @param {string} draftName - The name of the draft
+   * @returns {Object} - The prepared draft data
    */
-  async saveDraft() {
-    if (!this.app.data.original.length) {
-      this.app.utilities.showMessage('No data to save', 'warning');
-      return;
+  prepareDraftData(draftName) {
+    // Get the current data
+    const currentData = this.app.data.original.slice();
+
+    // Create the draft data object WITHOUT filters and hidden columns
+    const draftData = {
+      name: draftName,
+      data: currentData,
+      selected: Array.from(this.app.data.selected),
+      timestamp: new Date().toISOString(),
+    };
+
+    // If we're updating an existing draft, include the ID
+    if (this.app.state.currentDraftId) {
+      draftData.draft_id = this.app.state.currentDraftId;
     }
 
-    const draftName = await this.promptForDraftName();
-    if (!draftName) {
-      return; // User canceled
-    }
+    return draftData;
+  }
 
-    this.app.utilities.showLoading('Saving draft...');
+  /**
+   * Save the current state as a draft
+   * @param {string} [draftName=null] - Optional name for the draft
+   * @returns {Promise<void>} - A promise that resolves when the draft is saved
+   */
+  async saveDraft(draftName = null) {
     try {
-      const draftData = {
-        name: draftName,
-        data: this.app.data.original,
-        filters: this.app.state.currentFilters,
-        hiddenColumns: Array.from(this.app.state.hiddenColumns),
-        selected: Array.from(this.app.data.selected),
-        timestamp: new Date().toISOString(),
-      };
+      // Show prompt for draft name if not provided
+      if (!draftName) {
+        draftName =
+          this.app.state.currentDraftName ||
+          prompt(
+            Drupal.t('Enter a name for this draft:'),
+            this.app.state.currentDraftName || Drupal.t('Untitled Draft')
+          );
+      }
 
-      const response = await this.app.utilities.apiCall(
-        'POST',
+      if (!draftName) return; // User canceled the prompt
+
+      this.app.utilities.showProcessLoader(
+        Drupal.t('Saving draft...'),
+        'draft-save'
+      );
+
+      // Prepare the draft data without filters and hidden columns
+      const draftData = this.prepareDraftData(draftName);
+
+      // Save the draft
+      const response = await this.app.utilities.apiPost(
         this.app.config.endpoints.saveDraft,
         draftData
       );
 
-      if (response.success && response.draft_id) {
-        this.app.data.dirty = false;
+      if (response.success) {
         this.app.state.currentDraftId = response.draft_id;
         this.app.state.currentDraftName = draftName;
-        this.app.utilities.showMessage(
-          `Draft "${this.app.utilities.escapeHtml(
-            draftName
-          )}" saved successfully`,
+        this.app.data.dirty = false;
+
+        // Update the drafts list
+        await this.loadDrafts();
+
+        this.app.utilities.showNotification(
+          Drupal.t('Draft saved successfully'),
           'success'
         );
-        this.loadDrafts();
       } else {
-        throw new Error(response.message || 'Failed to save draft');
+        throw new Error(response.message || Drupal.t('Failed to save draft'));
       }
     } catch (error) {
-      this.app.utilities.handleError('Failed to save draft', error);
+      this.app.utilities.handleError(Drupal.t('Failed to save draft'), error);
     } finally {
-      this.app.utilities.hideLoading();
+      this.app.utilities.hideProcessLoader('draft-save');
     }
   }
 
   /**
-   * Loads the data from a specific draft into the editor.
-   * @param {string} draftId - The ID of the draft to load.
-   * @returns {Promise<void>} - Resolves when the draft is loaded or an error occurs.
+   * Load a draft from the server
+   * @param {number} draftId - The ID of the draft to load
+   * @returns {Promise<void>} - A promise that resolves when the draft is loaded
    */
   async loadDraft(draftId) {
-    if (!draftId) {
-      this.app.utilities.showMessage('Invalid draft ID', 'error');
-      return;
-    }
-
-    this.app.utilities.showLoading('Loading draft...');
     try {
-      const response = await this.app.utilities.apiCall(
-        'GET',
-        `${this.app.config.endpoints.loadDraft}${draftId}`
+      this.app.utilities.showProcessLoader(
+        Drupal.t('Loading draft...'),
+        'draft-load'
       );
 
-      if (response.success && response.data) {
-        this.app.state.currentDraftId = response.id;
-        this.app.state.currentDraftName = response.name;
-        this.loadDraftData(response.data);
-        this.app.utilities.showMessage(
-          `Draft "${this.app.utilities.escapeHtml(
-            response.name
-          )}" loaded successfully`,
+      const response = await this.app.utilities.apiGet(
+        `${this.app.config.endpoints.getDraft}/${draftId}`
+      );
+
+      if (response.success && response.draft) {
+        const draft = response.draft;
+
+        // Reset any existing filters and hidden columns before loading the draft
+        this.app.state.currentFilters = {};
+        this.app.state.hiddenColumns = new Set();
+
+        // Load the draft data
+        this.app.data.original = draft.data;
+        this.app.data.selected = new Set(draft.selected || []);
+        this.app.state.currentDraftId = draft.id;
+        this.app.state.currentDraftName = draft.name;
+
+        // Process and display the data
+        this.app.dataManager.processLoadedData();
+
+        this.app.utilities.showNotification(
+          Drupal.t('Draft loaded successfully'),
           'success'
         );
+
+        return true;
       } else {
-        throw new Error(response.message || 'Failed to load draft');
+        throw new Error(response.message || Drupal.t('Failed to load draft'));
       }
     } catch (error) {
-      this.app.utilities.handleError('Failed to load draft', error);
+      this.app.utilities.handleError(Drupal.t('Failed to load draft'), error);
+      return false;
     } finally {
-      this.app.utilities.hideLoading();
+      this.app.utilities.hideProcessLoader('draft-load');
     }
   }
 

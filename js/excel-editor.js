@@ -35,6 +35,7 @@ class ExcelEditor {
       currentProcessLoader: null,
       currentDraftId: null,
       currentDraftName: '',
+      dogEntityUrlCache: {},
     };
 
     // Configuration from Drupal settings
@@ -189,7 +190,6 @@ class ExcelEditor {
    * Bind table-specific events using delegation.
    */
   bindTableEvents() {
-    const $ = jQuery;
     this.elements.tableContainer.off('.excelEditor');
 
     this.elements.tableContainer.on(

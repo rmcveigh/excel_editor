@@ -61,3 +61,13 @@ excel_editor.list_drafts:
     _permission: 'use excel editor'
     _method: 'GET'
     _format: 'json'
+
+# Get URL for a dog by GRLS ID.
+excel_editor.get_dog_entity_url:
+  path: '/excel-editor/dog-entity-urls'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::getDogEntityUrls'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'GET'
+    _format: 'json'

@@ -19,7 +19,6 @@ export class ExcelEditorBarcodeSystem {
    * @param {string} reqTissueType - The required tissue type (e.g., "TISSUE_BRAIN")
    * @param {string} vialTissueType - The tissue type from the vial label (e.g., "TISSUE_BRAIN")
    * @param {string} healthStatus - The health status (e.g., "Healthy", "Diseased")
-   * @param {Object} options - Additional options for formatting
    * @return {string} The formatted tissue research barcode
    */
   formatTissueResearchBarcode(
@@ -27,8 +26,7 @@ export class ExcelEditorBarcodeSystem {
     biopsyType,
     reqTissueType,
     vialTissueType,
-    healthStatus,
-    options = {}
+    healthStatus
   ) {
     if (!subjectId) return '';
 
@@ -834,7 +832,7 @@ export class ExcelEditorBarcodeSystem {
         .find('input[name="barcode-format"]:checked')
         .val();
       this.executeResetBarcodesEnhanced(barcodeIndex, selectedFormat);
-      modal.remove();
+      setTimeout(() => modal.remove(), 1000);
     });
   }
 

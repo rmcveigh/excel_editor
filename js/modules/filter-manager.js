@@ -1,52 +1,199 @@
 /**
  * @file
- * Excel Editor Filter Manager Module
+ * Bulletproof Excel Editor Filter Manager Module - Prevents filter disappearing
  */
 
 export class ExcelEditorFilterManager {
   constructor(app) {
     this.app = app;
+    this.filtersInitialized = false;
+    this.activeFiltersVisible = false;
   }
 
   /**
-   * Sets up the filter controls area above the table.
+   * Sets up the filter controls area - now bulletproof against multiple calls
    */
   setupFilters() {
     if (!this.app.data.filtered.length) return;
 
+    // Always ensure the structure exists
+    this.ensureFilterStructureExists();
+
+    // Update dynamic content without recreating structure
+    this.updateValidationControls();
+    this.bindFilterEvents();
+
+    // Preserve active filters visibility if they should be shown
+    if (Object.keys(this.app.state.currentFilters).length > 0) {
+      this.showActiveFilters();
+    }
+  }
+
+  /**
+   * Ensures the filter structure exists but doesn't recreate if already there
+   */
+  ensureFilterStructureExists() {
+    const $ = jQuery;
+
+    // Check if the structure already exists
+    if ($('#active-filters-container').length > 0) {
+      // Structure exists, don't recreate it
+      this.app.utilities.logDebug(
+        'Filter structure already exists, skipping creation'
+      );
+      return;
+    }
+
+    // Structure doesn't exist, create it
+    this.createFilterStructure();
+    this.filtersInitialized = true;
+  }
+
+  /**
+   * Creates the initial filter structure (only when it doesn't exist)
+   */
+  createFilterStructure() {
     let statusMessages = '';
 
-    if (this.app.state.hiddenColumns.size > 0) {
-      statusMessages += `<div class="field"><div class="notification is-info is-light"><span class="icon"><i class="fas fa-eye-slash"></i></span> ${
-        this.app.state.hiddenColumns.size
-      } column${
-        this.app.state.hiddenColumns.size !== 1 ? 's' : ''
-      } hidden. <button class="button is-small is-light ml-2" id="show-column-settings"><span>Manage Columns</span></button></div></div>`;
-    }
-
+    // Combine the column visibility notifications into a single block
     if (
-      this.app.config.settings.hideBehavior === 'hide_others' &&
-      this.app.config.settings.defaultVisibleColumns?.length > 0
+      this.app.state.hiddenColumns.size > 0 ||
+      (this.app.config.settings.hideBehavior === 'hide_others' &&
+        this.app.config.settings.defaultVisibleColumns?.length > 0)
     ) {
-      statusMessages += `<div class="field"><div class="notification is-primary is-light"><span class="icon"><i class="fas fa-cog"></i></span> Default column visibility applied. <button class="button is-small is-light ml-2" id="reset-to-defaults"><span>Reset to Defaults</span></button> <button class="button is-small is-light ml-2" id="show-all-override"><span>Show All</span></button></div></div>`;
+      // Start building the combined notification
+      let messageContent = '';
+      let notificationClass = 'is-info';
+      let icon = 'eye-slash';
+
+      // Check for hidden columns
+      if (this.app.state.hiddenColumns.size > 0) {
+        messageContent += `${this.app.state.hiddenColumns.size} column${
+          this.app.state.hiddenColumns.size !== 1 ? 's' : ''
+        } hidden`;
+
+        // If we also have default visibility, add a separator
+        if (
+          this.app.config.settings.hideBehavior === 'hide_others' &&
+          this.app.config.settings.defaultVisibleColumns?.length > 0
+        ) {
+          messageContent += ' • ';
+        }
+      }
+
+      // Check for default visibility
+      if (
+        this.app.config.settings.hideBehavior === 'hide_others' &&
+        this.app.config.settings.defaultVisibleColumns?.length > 0
+      ) {
+        messageContent += 'Default column visibility applied';
+        notificationClass = 'is-primary';
+        icon = 'cog';
+      }
+
+      // Create the combined notification
+      statusMessages += `<div class="field"><div class="notification ${notificationClass} is-light">
+        <label class="label has-text-link"><span class="icon"><i class="fas fa-${icon}"></i></span> ${messageContent}</label>
+        <div class="buttons mt-2 are-small">
+          <button class="button" id="show-column-settings"><span>Manage Columns</span></button>
+          <button class="button" id="reset-to-defaults"><span>Reset to Defaults</span></button>
+          <button class="button" id="show-all-override"><span>Show All</span></button>
+        </div>
+      </div></div>`;
     }
 
-    // Add validation filter controls
+    // Create the complete structure
+    const fullStructure = `
+      ${statusMessages}
+      <div id="validation-controls-container" class="field"></div>
+      <div class="field mb-2" id="active-filters-container" style="display: none;">
+      <div class="field">
+        <label class="label mb-1">Active Filters:</label>
+      </div>
+        <div class="field is-grouped is-grouped-multiline mb-2">
+          <div class="control">
+            <button class="button is-small is-danger is-outlined" id="clear-all-filters-btn">
+              <span class="icon is-small"><i class="fas fa-times"></i></span>
+              <span>Clear All Filters</span>
+            </button>
+          </div>
+          <div class="control">
+            <button class="button is-small is-outlined" id="clear-last-filter-btn">
+              <span class="icon is-small"><i class="fas fa-undo"></i></span>
+              <span>Remove Last</span>
+            </button>
+          </div>
+          <div class="control">
+            <button class="button is-small is-info is-outlined" id="manage-filters-btn">
+              <span class="icon is-small"><i class="fas fa-cog"></i></span>
+              <span>Manage All</span>
+            </button>
+          </div>
+        </div>
+        <div class="field is-grouped is-grouped-multiline" id="active-filters"></div>
+        <div class="field mt-2" id="filter-stats">
+          <small class="has-text-grey" id="filter-stats-text"></small>
+        </div>
+      </div>`;
+
+    this.app.elements.filtersContainer.html(fullStructure);
+    this.app.utilities.logDebug('Created fresh filter structure');
+  }
+
+  /**
+   * Shows the active filters container and updates its content
+   */
+  showActiveFilters() {
+    const $ = jQuery;
+    const containerWrapper = $('#active-filters-container');
+
+    if (containerWrapper.length) {
+      containerWrapper.show();
+      this.activeFiltersVisible = true;
+      this.updateActiveFiltersContent();
+      this.app.utilities.logDebug('Showed active filters container');
+    }
+  }
+
+  /**
+   * Hides the active filters container
+   */
+  hideActiveFilters() {
+    const $ = jQuery;
+    const containerWrapper = $('#active-filters-container');
+
+    if (containerWrapper.length) {
+      containerWrapper.hide();
+      this.activeFiltersVisible = false;
+      this.app.utilities.logDebug('Hid active filters container');
+    }
+  }
+
+  /**
+   * Updates only the validation controls without affecting the rest of the structure
+   */
+  updateValidationControls() {
+    const $ = jQuery;
+    const validationContainer = $('#validation-controls-container');
+
+    if (!validationContainer.length) return;
+
     const validationControls = this.buildValidationFilterControls();
+    validationContainer.html(validationControls);
 
-    this.app.elements.filtersContainer.html(
-      `${statusMessages}
-       ${validationControls}
-       <div class="field mb-2" id="active-filters-container" style="display: none;">
-         <label class="label">Active Filters:</label>
-         <div class="control" id="active-filters"></div>
-         <div class="control mt-2">
-           <button class="button is-small is-light" id="clear-all-filters-btn"><span>Clear All Filters</span></button>
-         </div>
-       </div>`
-    );
+    // Re-bind validation filter events
+    $('#filter-errors-btn')
+      .off('click.validation')
+      .on('click.validation', () => this.applyValidationFilter('errors'));
 
-    this.bindFilterEvents();
+    // Add event for new validation report button
+    $('#validate-report-btn')
+      .off('click.validation')
+      .on('click.validation', () => {
+        if (this.app.validationManager) {
+          this.app.validationManager.showValidationSummary();
+        }
+      });
   }
 
   /**
@@ -64,48 +211,74 @@ export class ExcelEditorFilterManager {
       return ''; // No validation issues, don't show validation filters
     }
 
-    let controls =
-      '<div class="field"><div class="notification is-danger is-light"><div class="field is-grouped is-grouped-multiline">';
-
-    // Title
-    controls +=
-      '<div class="control"><label class="label is-small has-text-danger"><span class="icon is-small"><i class="fas fa-exclamation-triangle"></i></span> Validation Issues Found:</label></div>';
-
-    // Prominent "Show Errors" button
-    controls += `
-      <div class="control">
-        <button class="button is-danger" id="filter-errors-btn">
-          <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
-          <span><strong>Show All ${stats.errorCount} Error${
+    // Create a notification with identical structure to the column visibility notification
+    let controls = `
+    <div class="field">
+      <div class="notification is-danger is-light" style="min-height: 140px; display: flex; flex-direction: column;">
+        <div>
+          <label class="label has-text-danger">
+            <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+            Validation Issues Found
+          </label>
+          <p class="mb-3">There are ${
+            stats.errorCount
+          } rows with validation errors that need attention.</p>
+        </div>
+        <div class="buttons mt-auto are-small">
+          <button class="button is-danger" id="filter-errors-btn">
+            <span class="icon"><i class="fas fa-exclamation-triangle"></i></span>
+            <span><strong>Show All ${stats.errorCount} Error${
       stats.errorCount !== 1 ? 's' : ''
     }</strong></span>
-        </button>
-      </div>`;
+          </button>
+          <button class="button is-light" id="validate-report-btn">
+            <span class="icon"><i class="fas fa-file-alt"></i></span>
+            <span>View Validation Report</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
 
-    controls += '</div></div></div>';
     return controls;
   }
 
   /**
-   * Binds events for the filter control area.
+   * Binds events for the filter control area with enhanced removal functionality.
    */
   bindFilterEvents() {
     const $ = jQuery;
-    $('#clear-all-filters-btn').on('click', () => this.clearAllFilters());
-    $('#show-column-settings').on('click', () =>
-      this.app.columnManager.showColumnVisibilityModal()
-    );
-    $('#reset-to-defaults').on('click', () =>
-      this.app.columnManager.resetToDefaultColumns()
-    );
-    $('#show-all-override').on('click', () =>
-      this.app.columnManager.showAllColumnsOverride()
-    );
 
-    // Validation filter events (only errors now)
-    $('#filter-errors-btn').on('click', () =>
-      this.applyValidationFilter('errors')
-    );
+    // Clear all filters button
+    $('#clear-all-filters-btn')
+      .off('click.filterManager')
+      .on('click.filterManager', () => this.clearAllFilters());
+
+    // Clear last filter button
+    $('#clear-last-filter-btn')
+      .off('click.filterManager')
+      .on('click.filterManager', () => this.clearLastFilter());
+
+    // Manage filters button
+    $('#manage-filters-btn')
+      .off('click.filterManager')
+      .on('click.filterManager', () => this.showFilterManagementModal());
+
+    // Column management buttons
+    $('#show-column-settings')
+      .off('click.filterManager')
+      .on('click.filterManager', () =>
+        this.app.columnManager.showColumnVisibilityModal()
+      );
+    $('#reset-to-defaults')
+      .off('click.filterManager')
+      .on('click.filterManager', () =>
+        this.app.columnManager.resetToDefaultColumns()
+      );
+    $('#show-all-override')
+      .off('click.filterManager')
+      .on('click.filterManager', () =>
+        this.app.columnManager.showAllColumnsOverride()
+      );
   }
 
   /**
@@ -137,7 +310,7 @@ export class ExcelEditorFilterManager {
   }
 
   /**
-   * Builds the HTML string for the filter modal.
+   * Builds the HTML string for the filter modal with enhanced UI.
    * @param {string} header - The column header to display.
    * @param {Array} uniqueValues - The unique values in the column.
    * @param {number} columnIndex - The index of the column being filtered.
@@ -190,7 +363,10 @@ export class ExcelEditorFilterManager {
                     uniqueValues.length
                   } values selected</p>
                   <div class="field is-grouped is-grouped-right">
-                    <div class="control"><button class="button" id="clear-column-filter">Clear Filter</button></div>
+                    <div class="control"><button class="button is-warning" id="clear-column-filter">
+                      <span class="icon is-small"><i class="fas fa-times"></i></span>
+                      <span>Clear Filter</span>
+                    </button></div>
                     <div class="control"><button class="button" id="cancel-filter">Cancel</button></div>
                     <div class="control"><button class="button is-primary" id="apply-filter">Apply Filter</button></div>
                   </div>
@@ -247,9 +423,7 @@ export class ExcelEditorFilterManager {
     modal.find('#clear-column-filter').on('click', async () => {
       this.app.utilities.showQuickLoader('Clearing column filter...');
       try {
-        delete this.app.state.currentFilters[columnIndex];
-        await this.applyFilters();
-        this.updateActiveFiltersDisplay();
+        await this.removeFilter(columnIndex);
         modal.remove();
       } finally {
         this.app.utilities.hideQuickLoader();
@@ -289,7 +463,6 @@ export class ExcelEditorFilterManager {
     }
 
     await this.applyFilters();
-    this.updateActiveFiltersDisplay();
   }
 
   /**
@@ -344,6 +517,9 @@ export class ExcelEditorFilterManager {
       this.app.data.selected.clear();
       await this.app.uiRenderer.renderTable();
       this.app.dataManager.updateSelectionCount();
+
+      // CRITICAL: Update filters display immediately after applying
+      this.updateActiveFiltersDisplay();
 
       // Trigger validation after filters are applied and table is re-rendered
       if (this.app.validationManager) {
@@ -425,18 +601,87 @@ export class ExcelEditorFilterManager {
    * Clears all active filters and re-renders the table.
    */
   clearAllFilters() {
-    this.app.utilities.showQuickLoader('Clearing filters...');
+    if (Object.keys(this.app.state.currentFilters).length === 0) {
+      this.app.utilities.showMessage('No filters to clear', 'info', 2000);
+      return;
+    }
+
+    // Show confirmation for multiple filters
+    const filterCount = Object.keys(this.app.state.currentFilters).length;
+    if (filterCount > 1) {
+      if (!confirm(`Clear all ${filterCount} active filters?`)) {
+        return;
+      }
+    }
+
+    this.app.utilities.showQuickLoader('Clearing all filters...');
 
     setTimeout(async () => {
       try {
         this.app.state.currentFilters = {};
         await this.applyFilters();
-        this.updateActiveFiltersDisplay();
         this.app.utilities.showMessage('All filters cleared', 'success');
       } finally {
         this.app.utilities.hideQuickLoader();
       }
     }, 50);
+  }
+
+  /**
+   * Clears the most recently applied filter.
+   */
+  clearLastFilter() {
+    const filterKeys = Object.keys(this.app.state.currentFilters);
+
+    if (filterKeys.length === 0) {
+      this.app.utilities.showMessage('No filters to remove', 'info', 2000);
+      return;
+    }
+
+    this.app.utilities.showQuickLoader('Removing last filter...');
+
+    setTimeout(async () => {
+      try {
+        // Remove the last filter (most recently added)
+        const lastFilterKey = filterKeys[filterKeys.length - 1];
+        const removedFilter = this.app.state.currentFilters[lastFilterKey];
+        delete this.app.state.currentFilters[lastFilterKey];
+
+        await this.applyFilters();
+
+        // Show which filter was removed
+        let filterName = 'Last filter';
+        if (lastFilterKey !== '_validation') {
+          const columnName = this.app.data.original[0][parseInt(lastFilterKey)];
+          filterName = `Filter on "${columnName}"`;
+        } else {
+          filterName = 'Validation filter';
+        }
+
+        this.app.utilities.showMessage(`${filterName} removed`, 'success');
+      } finally {
+        this.app.utilities.hideQuickLoader();
+      }
+    }, 50);
+  }
+
+  /**
+   * Removes a specific filter by column index.
+   * @param {string|number} columnIndex - The column index of the filter to remove.
+   */
+  async removeFilter(columnIndex) {
+    if (!this.app.state.currentFilters[columnIndex]) {
+      return;
+    }
+
+    this.app.utilities.showQuickLoader('Removing filter...');
+
+    try {
+      delete this.app.state.currentFilters[columnIndex];
+      await this.applyFilters();
+    } finally {
+      this.app.utilities.hideQuickLoader();
+    }
   }
 
   /**
@@ -480,46 +725,124 @@ export class ExcelEditorFilterManager {
   }
 
   /**
-   * Updates the display of active filters above the table.
+   * Updates the display of active filters - the core method that handles visibility
    */
   updateActiveFiltersDisplay() {
-    const $ = jQuery;
-    const filtersContainer = $('#active-filters');
-    const containerWrapper = $('#active-filters-container');
+    const filterCount = Object.keys(this.app.state.currentFilters).length;
 
-    if (Object.keys(this.app.state.currentFilters).length === 0) {
-      containerWrapper.hide();
+    this.app.utilities.logDebug(
+      `Updating active filters display: ${filterCount} filters`
+    );
+
+    if (filterCount === 0) {
+      this.hideActiveFilters();
       return;
     }
 
-    const filterTags = Object.entries(this.app.state.currentFilters)
+    // Show the container and update content
+    this.showActiveFilters();
+  }
+
+  /**
+   * Updates the active filters content display
+   */
+  updateActiveFiltersContent() {
+    const $ = jQuery;
+    const activeFiltersContainer = $('#active-filters');
+
+    if (!activeFiltersContainer.length) return;
+
+    const filterEntries = Object.entries(this.app.state.currentFilters);
+
+    if (filterEntries.length === 0) {
+      activeFiltersContainer.html(
+        '<p class="has-text-grey">No active filters</p>'
+      );
+      this.updateFilterStats(); // Correct function name
+      return;
+    }
+
+    const tagsHtml = filterEntries
       .map(([columnIndex, filter]) => {
-        if (filter.type === 'validation') {
-          // Special handling for validation filters (now all errors)
-          return `<span class="tag is-danger"><strong>Validation Errors:</strong> ${filter.description}<button class="delete is-small ml-1" data-column="${columnIndex}"></button></span>`;
-        } else {
-          // Regular column filters
-          const header = this.app.data.original[0][parseInt(columnIndex)];
-          const filterDescription = this.getFilterDescription(filter);
-          return `<span class="tag is-info"><strong>${this.app.utilities.escapeHtml(
-            header
-          )}</strong>: ${filterDescription}<button class="delete is-small ml-1" data-column="${columnIndex}"></button></span>`;
+        // Safety check - ensure filter is valid before accessing properties
+        if (!filter || typeof filter !== 'object') {
+          return ''; // Skip this filter if it's invalid
         }
+
+        const columnName =
+          this.app.data.filtered[0][columnIndex] || `Column ${columnIndex}`;
+        const filterType = filter.type || 'unknown';
+
+        let filterDescription = '';
+
+        // Safely handle different filter types
+        switch (filterType) {
+          case 'include':
+            // Handle include filters safely
+            if (Array.isArray(filter.values)) {
+              const valueCount = filter.values.length;
+              filterDescription = `${valueCount} value${
+                valueCount !== 1 ? 's' : ''
+              }`;
+            } else {
+              filterDescription = 'values';
+            }
+            break;
+          case 'search':
+            // Handle search filters safely
+            filterDescription = `"${filter.searchTerm || ''}"`;
+            break;
+          case 'validation':
+            // Handle validation filters
+            filterDescription = filter.validationType || 'validation';
+            break;
+          default:
+            filterDescription = 'custom filter';
+        }
+
+        return `<div class="control mb-1">
+      <div class="tags has-addons">
+        <span class="tag is-info is-light">${this.app.utilities.escapeHtml(
+          columnName
+        )} ${filterDescription}
+        <button class="delete remove-filter" data-column="${columnIndex}"></button></span>
+      </div>
+    </div>`;
       })
-      .join(' ');
+      .join('');
 
-    filtersContainer.html(filterTags);
-    containerWrapper.show();
+    activeFiltersContainer.html(tagsHtml);
+    this.updateFilterStats(); // Correct function name
 
-    filtersContainer.find('.delete').on('click', (e) => {
-      const columnIndex = $(e.target).data('column');
-      delete this.app.state.currentFilters[columnIndex];
-      this.applyFilters();
-      this.updateActiveFiltersDisplay();
-
-      // Refresh validation filter controls when filters change
-      this.setupFilters();
+    // Rebind remove filter events
+    $('.remove-filter').on('click', (e) => {
+      const columnIndex = $(e.currentTarget).data('column');
+      this.removeFilter(columnIndex);
     });
+  }
+
+  /**
+   * Updates the filter statistics display
+   */
+  updateFilterStats() {
+    const $ = jQuery;
+    const statsContainer = $('#filter-stats-text');
+
+    if (!statsContainer.length) return;
+
+    // Calculate filtered vs total row counts (skip header row)
+    const totalRows = this.app.data.original.length - 1;
+    const filteredRows = this.app.data.filtered.length - 1;
+    const hiddenRows = totalRows - filteredRows;
+
+    if (hiddenRows === 0) {
+      statsContainer.html(`Showing all ${totalRows} rows`);
+    } else {
+      const percentVisible = Math.round((filteredRows / totalRows) * 100);
+      statsContainer.html(
+        `Showing ${filteredRows} of ${totalRows} rows (${percentVisible}%) • ${hiddenRows} rows filtered out`
+      );
+    }
   }
 
   /**
@@ -620,8 +943,6 @@ export class ExcelEditorFilterManager {
       };
 
       await this.applyFilters();
-      this.updateActiveFiltersDisplay();
-
       this.app.utilities.showMessage(`Showing ${filterDescription}`, 'success');
     } catch (error) {
       this.app.utilities.handleError(
@@ -640,5 +961,148 @@ export class ExcelEditorFilterManager {
     const stats = this.getFilterStats();
     const message = `Showing ${stats.filteredRows} of ${stats.totalRows} rows (${stats.hiddenPercentage}% hidden)`;
     this.app.utilities.showMessage(message, 'info', 3000);
+  }
+
+  /**
+   * Shows a modal to manage all active filters
+   */
+  showFilterManagementModal() {
+    const $ = jQuery;
+    const filterEntries = Object.entries(this.app.state.currentFilters);
+
+    if (filterEntries.length === 0) {
+      this.app.utilities.showMessage('No active filters to manage', 'info');
+      return;
+    }
+
+    const filtersList = filterEntries
+      .map(([columnIndex, filter]) => {
+        // Safety check - ensure filter is valid before accessing properties
+        if (!filter || typeof filter !== 'object') {
+          return ''; // Skip this filter if it's invalid
+        }
+
+        const columnName =
+          this.app.data.filtered[0][columnIndex] || `Column ${columnIndex}`;
+        const filterType = filter.type || 'unknown';
+
+        let filterDetails = '';
+
+        // Safely handle different filter types
+        switch (filterType) {
+          case 'include':
+            // Only process if values is an array
+            if (Array.isArray(filter.values)) {
+              const valueList = filter.values
+                .slice(0, 5)
+                .map(
+                  (v) =>
+                    `<span class="tag is-info is-light mr-1 mb-1">${this.app.utilities.escapeHtml(
+                      v || '(empty)'
+                    )}</span>`
+                )
+                .join('');
+
+              const moreValues =
+                filter.values.length > 5
+                  ? `<span class="tag is-light">+${
+                      filter.values.length - 5
+                    } more</span>`
+                  : '';
+
+              filterDetails = `<div class="filter-values mt-1">${valueList}${moreValues}</div>`;
+            } else {
+              filterDetails =
+                '<div class="filter-values mt-1"><span class="tag is-light">Invalid filter values</span></div>';
+            }
+            break;
+          case 'search':
+            filterDetails = `<div class="filter-values mt-1"><span class="tag is-warning is-light">"${this.app.utilities.escapeHtml(
+              filter.searchTerm || ''
+            )}"</span></div>`;
+            break;
+          case 'validation':
+            filterDetails = `<div class="filter-values mt-1"><span class="tag is-danger is-light">${
+              filter.validationType || 'validation'
+            }</span></div>`;
+            break;
+          default:
+            filterDetails =
+              '<div class="filter-values mt-1"><span class="tag is-light">Custom filter</span></div>';
+        }
+
+        return `<div class="box p-3 mb-3 filter-management-item">
+      <div class="level is-mobile mb-2">
+        <div class="level-left">
+          <strong>${this.app.utilities.escapeHtml(columnName)}</strong>
+        </div>
+        <div class="level-right">
+          <div class="buttons are-small">
+            <button class="button is-small is-danger is-outlined remove-filter-btn" data-column="${columnIndex}">
+              <span class="icon is-small"><i class="fas fa-times"></i></span>
+              <span>Remove</span>
+            </button>
+            <button class="button is-small is-info is-outlined edit-filter-btn" data-column="${columnIndex}">
+              <span class="icon is-small"><i class="fas fa-edit"></i></span>
+              <span>Edit</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      ${filterDetails}
+    </div>`;
+      })
+      .join('');
+
+    const modalHtml = `<div class="modal is-active" id="filter-management-modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title"><span class="icon"><i class="fas fa-filter"></i></span> Manage Filters</p>
+        <button class="delete" aria-label="close"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="filter-management-list">
+          ${filtersList}
+        </div>
+      </section>
+      <footer class="modal-card-foot">
+        <button class="button is-danger" id="clear-all-filters-modal-btn">Clear All Filters</button>
+        <button class="button" id="close-filter-modal-btn">Close</button>
+      </footer>
+    </div>
+  </div>`;
+
+    $('body').append(modalHtml);
+
+    // Bind events
+    $('#filter-management-modal .delete, #close-filter-modal-btn').on(
+      'click',
+      () => {
+        $('#filter-management-modal').remove();
+      }
+    );
+
+    $('#clear-all-filters-modal-btn').on('click', () => {
+      this.clearAllFilters();
+      $('#filter-management-modal').remove();
+    });
+
+    $('.remove-filter-btn').on('click', (e) => {
+      const columnIndex = $(e.currentTarget).data('column');
+      this.removeFilter(columnIndex);
+      $(e.currentTarget).closest('.filter-management-item').remove();
+
+      // If no more filters, close the modal
+      if (Object.keys(this.app.state.currentFilters).length === 0) {
+        $('#filter-management-modal').remove();
+      }
+    });
+
+    $('.edit-filter-btn').on('click', (e) => {
+      const columnIndex = $(e.currentTarget).data('column');
+      $('#filter-management-modal').remove();
+      this.showColumnFilter(columnIndex);
+    });
   }
 }

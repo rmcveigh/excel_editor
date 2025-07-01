@@ -23,10 +23,11 @@ export class ExcelEditorUIRenderer {
    * @returns {Promise<void>} A promise that resolves when the table is fully rendered.
    */
   async renderTable() {
-    if (!this.app.data.filtered.length) {
-      this.app.elements.tableContainer.html(
-        '<p class="has-text-centered">No data available</p>'
-      );
+    // Clear existing table
+    this.app.elements.table.empty();
+
+    if (!this.app.data.filtered || !this.app.data.filtered.length) {
+      this.app.elements.table.html('<p>No data to display</p>');
       return;
     }
 
@@ -63,6 +64,11 @@ export class ExcelEditorUIRenderer {
           }
         }, 100);
       }
+
+      // After the table is rendered, fetch links for subject IDs
+      this.fetchSubjectIdLinks();
+    } catch (error) {
+      this.app.utilities.handleError('Error rendering table', error);
     } finally {
       if (shouldShowLoader) {
         this.app.utilities.hideProcessLoader();
@@ -165,6 +171,12 @@ export class ExcelEditorUIRenderer {
     const td = document.createElement('td');
     const columnName = this.app.data.filtered[0][colIndex];
     const isEditable = this.app.config.editableColumns.includes(columnName);
+    const isSubjectId = columnName.toLowerCase().includes('subject id');
+
+    // Add specific class based on column name
+    if (isSubjectId) {
+      td.classList.add('subject-id-cell');
+    }
 
     if (isEditable) {
       td.className = 'editable-column';
@@ -188,10 +200,17 @@ export class ExcelEditorUIRenderer {
       }
     } else {
       td.className = 'readonly-cell';
-      td.innerHTML = `<span class="excel-editor-readonly">${this.app.utilities.escapeHtml(
-        cellValue || ''
-      )}</span>`;
+      if (isSubjectId) {
+        td.innerHTML = `<span class="excel-editor-readonly">${this.app.utilities.escapeHtml(
+          cellValue || ''
+        )}</span>`;
+      } else {
+        td.innerHTML = `<span class="excel-editor-readonly">${this.app.utilities.escapeHtml(
+          cellValue || ''
+        )}</span>`;
+      }
     }
+
     return td;
   }
 
@@ -525,6 +544,83 @@ export class ExcelEditorUIRenderer {
     }
     if (state.hiddenColumns) {
       this.app.state.hiddenColumns = new Set(state.hiddenColumns);
+    }
+  }
+
+  /**
+   * Fetches entity URLs for visible subject IDs in batch
+   */
+  fetchSubjectIdLinks() {
+    const $ = jQuery; // or however you access jQuery
+
+    // Find all subject ID cells that need links
+    // Adjust the selector to match your HTML structure
+    const elementsToProcess = $('.subject-id-cell:not(.processed)');
+
+    if (elementsToProcess.length === 0) return;
+
+    // Collect unique IDs that aren't already in cache
+    const uniqueIds = new Set();
+    elementsToProcess.each((index, element) => {
+      const $element = $(element);
+      const grlsId = $element.text().trim();
+
+      if (grlsId && !this.dogEntityUrlCache[grlsId]) {
+        uniqueIds.add(grlsId);
+        // Mark as processing to avoid reprocessing
+        $element.addClass('processing');
+      }
+    });
+
+    if (uniqueIds.size === 0) return;
+
+    // Get all the URLs in a single batch request
+    this.fetchDogEntityUrlsBatch(Array.from(uniqueIds))
+      .then((result) => {
+        if (result.success && result.urls) {
+          // Process all the returned URLs
+          Object.entries(result.urls).forEach(([grlsId, urlData]) => {
+            // Store in cache
+            this.app.state.dogEntityUrlCache[grlsId] = urlData;
+
+            // Update all matching elements with the link
+            $(`.subject-id-cell.processing`).each((i, el) => {
+              const $el = $(el);
+              // Only process cells that match this ID
+              if ($el.text().trim() === grlsId) {
+                // Create a link but keep the original text
+                $el.html(
+                  `<a href="${urlData.url}" target="_blank">${$el
+                    .text()
+                    .trim()}</a>`
+                );
+                // Change from 'processing' to 'processed' state
+                $el.removeClass('processing').addClass('processed');
+              }
+            });
+          });
+        }
+      })
+      .catch((error) => {
+        console.error(`Error fetching dog entity links: ${error.message}`);
+        // Mark failed elements as processed to avoid retrying
+        $('.subject-id-cell.processing')
+          .removeClass('processing')
+          .addClass('processed');
+      });
+  }
+
+  /**
+   * Fetches multiple dog entity URLs in a single request
+   */
+  async fetchDogEntityUrlsBatch(grlsIds) {
+    try {
+      // Adjust this to use your existing API call method
+      return await this.apiCall('POST', this.app.config.endpoints.saveDraft, {
+        grls_ids: grlsIds,
+      });
+    } catch (error) {
+      throw new Error(`Failed to fetch dog entity links: ${error.message}`);
     }
   }
 }

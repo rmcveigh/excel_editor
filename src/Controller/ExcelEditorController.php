@@ -3,6 +3,7 @@
 namespace Drupal\excel_editor\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
+use Drupal\Core\Database\Connection;
 use Drupal\excel_editor\DraftManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -21,13 +22,23 @@ class ExcelEditorController extends ControllerBase {
   protected DraftManager $draftManager;
 
   /**
+   * The database connection.
+   *
+   * @var \Drupal\Core\Database\Connection
+   */
+  protected $connection;
+
+  /**
    * Constructs a new ExcelEditorController object.
    *
    * @param \Drupal\excel_editor\DraftManager $draft_manager
    *   The draft manager service.
+   * @param \Drupal\Core\Database\Connection $connection
+   *   The database connection.
    */
-  public function __construct(DraftManager $draft_manager) {
+  public function __construct(DraftManager $draft_manager, Connection $connection) {
     $this->draftManager = $draft_manager;
+    $this->connection = $connection;
   }
 
   /**
@@ -35,7 +46,8 @@ class ExcelEditorController extends ControllerBase {
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('draft_manager')
+      $container->get('draft_manager'),
+      $container->get('database')
     );
   }
 
@@ -69,6 +81,7 @@ class ExcelEditorController extends ControllerBase {
               'loadDraft' => '/excel-editor/load-draft/',
               'listDrafts' => '/excel-editor/drafts',
               'deleteDraft' => '/excel-editor/delete-draft/',
+              'getDogEntityUrls' => '/excel-editor/dog-entity-urls',
             ],
             'settings' => [
               'autosave_enabled' => (bool) $autosaveEnabled,
@@ -194,6 +207,64 @@ class ExcelEditorController extends ControllerBase {
     catch (\Exception $e) {
       $this->getLogger('excel_editor')->error('Error listing drafts: @error', ['@error' => $e->getMessage()]);
       return new JsonResponse(['success' => FALSE, 'message' => $e->getMessage()], 500);
+    }
+  }
+
+  /**
+   * Returns URLs for multiple grls_dog entities based on grls_ids.
+   */
+  public function getDogEntityUrls(Request $request) {
+    try {
+      $content = $request->getContent();
+      $data = json_decode($content, TRUE);
+
+      if (json_last_error() !== JSON_ERROR_NONE || empty($data['grls_ids']) || !is_array($data['grls_ids'])) {
+        return new JsonResponse(['success' => FALSE, 'message' => 'Invalid or missing grls_ids array'], 400);
+      }
+
+      $grls_ids = array_unique(array_filter($data['grls_ids']));
+
+      if (empty($grls_ids)) {
+        return new JsonResponse(['success' => TRUE, 'urls' => []], 200);
+      }
+
+      // Use the database query directly for better performance with batches.
+      $query = $this->connection->select('grls_dog', 'gd');
+      $query->fields('gd', ['id', 'grls_id', 'name']);
+      $query->condition('grls_id', $grls_ids, 'IN');
+      $result = $query->execute()->fetchAllAssoc('grls_id');
+
+      $urls = [];
+
+      foreach ($grls_ids as $grls_id) {
+        if (isset($result[$grls_id])) {
+          $dog_id = $result[$grls_id]->id;
+          $label = $result[$grls_id]->name;
+
+          // Load just the entity storage to generate the URL.
+          $dogStorage = $this->entityTypeManager->getStorage('grls_dog');
+          $dog = $dogStorage->load($dog_id);
+
+          if ($dog) {
+            $urls[$grls_id] = [
+              'url' => $dog->toUrl('canonical')->setAbsolute()->toString(),
+              'label' => $label,
+              'entity_id' => $dog_id,
+            ];
+          }
+        }
+      }
+
+      return new JsonResponse([
+        'success' => TRUE,
+        'urls' => $urls,
+      ]);
+    }
+    catch (\Exception $e) {
+      return new JsonResponse([
+        'success' => FALSE,
+        'message' => 'Error getting dog entity URLs: ' . $e->getMessage(),
+      ], 500);
     }
   }
 
