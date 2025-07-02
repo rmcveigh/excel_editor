@@ -20,6 +20,7 @@ export class ExcelEditorUIRenderer {
 
   /**
    * Renders the main data table with enhanced loading indicators.
+   * Only fetch subject ID links once per dataset
    * @returns {Promise<void>} A promise that resolves when the table is fully rendered.
    */
   async renderTable() {
@@ -65,8 +66,8 @@ export class ExcelEditorUIRenderer {
         }, 100);
       }
 
-      // After the table is rendered, fetch links for subject IDs
-      this.fetchSubjectIdLinks();
+      // Only fetch subject ID links if not already cached for this dataset
+      this.fetchSubjectIdLinksOptimized();
     } catch (error) {
       this.app.utilities.handleError('Error rendering table', error);
     } finally {
@@ -162,6 +163,7 @@ export class ExcelEditorUIRenderer {
 
   /**
    * Creates an individual table cell (<td>).
+   * Better subject ID detection
    * @param {number} rowIndex - The index of the row in the filtered data.
    * @param {number} colIndex - The index of the column in the filtered data.
    * @param {string} cellValue - The value to display in the cell.
@@ -171,8 +173,9 @@ export class ExcelEditorUIRenderer {
     const td = document.createElement('td');
     const columnName = this.app.data.filtered[0][colIndex];
     const isEditable = this.app.config.editableColumns.includes(columnName);
-    const isSubjectId =
-      columnName && columnName.toLowerCase().includes('subject id');
+
+    // More flexible subject ID detection
+    const isSubjectId = columnName && this.isSubjectIdColumn(columnName);
 
     // Add column-specific class using safe CSS identifier cleaner
     const columnClass = this.createColumnClass(columnName);
@@ -589,123 +592,194 @@ export class ExcelEditorUIRenderer {
     }
   }
 
-  /**
-   * Fetches entity URLs for visible subject IDs in batch
-   */
-  fetchSubjectIdLinks() {
-    const $ = jQuery;
+  // =========================================================================
+  // OPTIMIZED SUBJECT ID LINK CACHING SYSTEM
+  // =========================================================================
 
-    // Ensure cache is initialized
-    if (!this.app.state.dogEntityUrlCache) {
-      this.app.state.dogEntityUrlCache = {};
+  /**
+   * OPTIMIZED: Fetches subject ID links only once per dataset
+   */
+  fetchSubjectIdLinksOptimized() {
+    // Check if we've already fetched links for this dataset
+    if (this.app.state.subjectLinksFullyFetched) {
+      this.app.utilities.logDebug(
+        'Subject ID links already fetched for this dataset, applying cached links'
+      );
+      this.applyCachedSubjectIdLinks();
+      return;
     }
 
-    // Find all subject ID cells that need links
-    const elementsToProcess = $('.subject-id-cell:not(.processed)');
+    // Check if we have subject ID data at all
+    const allSubjectIds = this.getAllSubjectIdsFromDataset();
 
-    if (elementsToProcess.length === 0) return;
+    if (allSubjectIds.length === 0) {
+      this.app.utilities.logDebug('No subject IDs found in dataset');
+      return;
+    }
 
-    // Collect unique IDs that aren't already in cache
-    const uniqueIds = new Set();
-    elementsToProcess.each((index, element) => {
-      try {
-        const $element = $(element);
-        const grlsId = $element.text().trim();
+    // Filter out IDs we already have cached
+    const uncachedIds = allSubjectIds.filter(
+      (id) => id && !this.app.state.dogEntityUrlCache[id]
+    );
 
-        if (grlsId && !this.app.state.dogEntityUrlCache[grlsId]) {
-          uniqueIds.add(grlsId);
-          // Mark as processing to avoid reprocessing
-          $element.addClass('processing');
-        }
-      } catch (error) {
-        // Silently handle individual element processing errors
-        this.app.utilities.logDebug(
-          'Error processing subject ID element:',
-          error
-        );
-      }
-    });
+    if (uncachedIds.length === 0) {
+      this.app.utilities.logDebug('All subject IDs already cached');
+      this.app.state.subjectLinksFullyFetched = true;
+      this.applyCachedSubjectIdLinks();
+      return;
+    }
 
-    if (uniqueIds.size === 0) return;
+    this.app.utilities.logDebug(
+      `Fetching links for ${uncachedIds.length} uncached subject IDs`
+    );
 
-    // Get all the URLs in a single batch request
-    this.fetchDogEntityUrlsBatch(Array.from(uniqueIds))
+    // Fetch the missing links
+    this.fetchDogEntityUrlsBatch(uncachedIds)
       .then((result) => {
         if (result && result.success && result.urls) {
-          // Process all the returned URLs
+          // Store all URLs in cache
           Object.entries(result.urls).forEach(([grlsId, urlData]) => {
-            try {
-              // Store in cache (with safety check)
-              if (urlData && urlData.url) {
-                this.app.state.dogEntityUrlCache[grlsId] = urlData;
-
-                // Update all matching elements with the link
-                $(`.subject-id-cell.processing`).each((i, el) => {
-                  const $el = $(el);
-                  try {
-                    // Only process cells that match this ID
-                    if ($el.text().trim() === grlsId) {
-                      // Create a link but keep the original text
-                      $el.html(
-                        `<a href="${this.app.utilities.escapeHtml(
-                          urlData.url
-                        )}" target="_blank">${this.app.utilities.escapeHtml(
-                          $el.text().trim()
-                        )}</a>`
-                      );
-                      // Change from 'processing' to 'processed' state
-                      $el.removeClass('processing').addClass('processed');
-                    }
-                  } catch (linkError) {
-                    // Silently handle link creation errors
-                    this.app.utilities.logDebug(
-                      `Error creating link for ${grlsId}:`,
-                      linkError
-                    );
-                    $el.removeClass('processing').addClass('processed');
-                  }
-                });
-              }
-            } catch (cacheError) {
-              // Silently handle cache storage errors
-              this.app.utilities.logDebug(
-                `Error caching URL for ${grlsId}:`,
-                cacheError
-              );
+            if (urlData && urlData.url) {
+              this.app.state.dogEntityUrlCache[grlsId] = urlData;
             }
           });
-        }
 
-        // Mark any remaining processing elements as processed (silently fail)
-        $('.subject-id-cell.processing')
-          .removeClass('processing')
-          .addClass('processed');
+          // Mark this dataset as fully fetched
+          this.app.state.subjectLinksFullyFetched = true;
+
+          // Apply all cached links to the current table
+          this.applyCachedSubjectIdLinks();
+
+          this.app.utilities.logDebug(
+            `Successfully cached links for ${
+              Object.keys(result.urls).length
+            } subjects`
+          );
+        } else {
+          this.app.utilities.logDebug('Failed to fetch subject ID links');
+        }
       })
       .catch((error) => {
-        // Silently handle batch fetch errors
-        this.app.utilities.logDebug('Error fetching dog entity links:', error);
-
-        // Mark failed elements as processed to avoid retrying
-        $('.subject-id-cell.processing')
-          .removeClass('processing')
-          .addClass('processed');
+        this.app.utilities.logDebug('Error fetching subject ID links:', error);
       });
   }
 
   /**
-   * Fetches multiple dog entity URLs in a single request
-   * @param {Array} grlsIds - Array of GRLS IDs to fetch URLs for
-   * @return {Promise<Object>} - Promise resolving to response with URLs
+   * Gets all subject IDs from the current dataset
+   */
+  getAllSubjectIdsFromDataset() {
+    const subjectIdColumnIndex = this.findSubjectIdColumnIndex();
+
+    if (subjectIdColumnIndex === -1) {
+      return [];
+    }
+
+    const subjectIds = [];
+
+    // Get all subject IDs from the original dataset (not just filtered)
+    for (let i = 1; i < this.app.data.original.length; i++) {
+      const id = this.app.data.original[i][subjectIdColumnIndex];
+      if (id && String(id).trim()) {
+        subjectIds.push(String(id).trim());
+      }
+    }
+
+    // Return unique IDs
+    return [...new Set(subjectIds)];
+  }
+
+  /**
+   * Finds the subject ID column index
+   */
+  findSubjectIdColumnIndex() {
+    const headerRow = this.app.data.original[0];
+
+    for (let i = 0; i < headerRow.length; i++) {
+      const columnName = headerRow[i];
+      if (columnName && this.isSubjectIdColumn(columnName)) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * Determines if a column name represents subject ID data
+   */
+  isSubjectIdColumn(columnName) {
+    const name = String(columnName).toLowerCase();
+    return (
+      name.includes('subject id') ||
+      name.includes('grls id') ||
+      name.includes('dog id') ||
+      name.includes('subject_id') ||
+      name.includes('grls_id')
+    );
+  }
+
+  /**
+   * Applies cached subject ID links to all visible subject ID cells
+   */
+  applyCachedSubjectIdLinks() {
+    const $ = jQuery;
+
+    $('.subject-id-cell:not(.processed)').each((index, element) => {
+      const $element = $(element);
+      const grlsId = $element.text().trim();
+
+      if (grlsId && this.app.state.dogEntityUrlCache[grlsId]) {
+        const urlData = this.app.state.dogEntityUrlCache[grlsId];
+
+        // Create the link
+        $element.html(
+          `<a href="${this.app.utilities.escapeHtml(
+            urlData.url
+          )}" target="_blank">
+            ${this.app.utilities.escapeHtml(grlsId)}
+          </a>`
+        );
+
+        // Mark as processed
+        $element.addClass('processed');
+      } else {
+        // No cached link available, mark as processed anyway
+        $element.addClass('processed');
+      }
+    });
+  }
+
+  /**
+   * Resets the subject ID link cache (call when loading new data)
+   */
+  resetSubjectIdLinkCache() {
+    this.app.state.subjectLinksFullyFetched = false;
+    this.app.state.dogEntityUrlCache = {};
+    this.app.utilities.logDebug('Subject ID link cache reset');
+  }
+
+  /**
+   * Enhanced fetchDogEntityUrlsBatch with better error handling
    */
   async fetchDogEntityUrlsBatch(grlsIds) {
     try {
-      // Use the correct endpoint and method
-      return await this.app.utilities.apiPost(
+      if (!grlsIds || grlsIds.length === 0) {
+        return { success: true, urls: {} };
+      }
+
+      this.app.utilities.logDebug(
+        `Fetching URLs for ${grlsIds.length} subject IDs:`,
+        grlsIds
+      );
+
+      const response = await this.app.utilities.apiPost(
         this.app.config.endpoints.getDogEntityUrls,
         { grls_ids: grlsIds }
       );
+
+      this.app.utilities.logDebug('Subject ID API response:', response);
+      return response;
     } catch (error) {
-      // Return a safe empty response instead of throwing
       this.app.utilities.logDebug('Failed to fetch dog entity links:', error);
       return {
         success: false,

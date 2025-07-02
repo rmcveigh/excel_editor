@@ -36,6 +36,7 @@ class ExcelEditor {
       currentDraftId: null,
       currentDraftName: '',
       dogEntityUrlCache: {},
+      subjectLinksFullyFetched: false,
     };
 
     // Configuration from Drupal settings

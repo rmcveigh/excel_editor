@@ -19,8 +19,12 @@ export class ExcelEditorFilterManager {
     // Always ensure the structure exists
     this.ensureFilterStructureExists();
 
-    // Update dynamic content without recreating structure
+    // Update dynamic content without affecting the rest of the structure
     this.updateValidationControls();
+
+    // Update column visibility status when columns change
+    this.updateColumnVisibilityStatus();
+
     this.bindFilterEvents();
 
     // Preserve active filters visibility if they should be shown
@@ -50,61 +54,107 @@ export class ExcelEditorFilterManager {
   }
 
   /**
-   * Creates the initial filter structure (only when it doesn't exist)
+   * Updates just the column visibility status without recreating the entire structure
    */
-  createFilterStructure() {
-    let statusMessages = '';
+  updateColumnVisibilityStatus() {
+    const $ = jQuery;
 
-    // Combine the column visibility notifications into a single block
-    if (
-      this.app.state.hiddenColumns.size > 0 ||
-      (this.app.config.settings.hideBehavior === 'hide_others' &&
-        this.app.config.settings.defaultVisibleColumns?.length > 0)
-    ) {
-      // Start building the combined notification
-      let messageContent = '';
-      let notificationClass = 'is-info';
-      let icon = 'eye-slash';
+    // Find the existing column visibility notification
+    const existingNotification = $('#column-visibility-notification');
 
-      // Check for hidden columns
-      if (this.app.state.hiddenColumns.size > 0) {
-        messageContent += `${this.app.state.hiddenColumns.size} column${
-          this.app.state.hiddenColumns.size !== 1 ? 's' : ''
-        } hidden`;
+    // Always generate the new content since we always want to show column count
+    const newContent = this.buildColumnVisibilityNotification();
 
-        // If we also have default visibility, add a separator
-        if (
-          this.app.config.settings.hideBehavior === 'hide_others' &&
-          this.app.config.settings.defaultVisibleColumns?.length > 0
-        ) {
-          messageContent += ' • ';
-        }
+    if (existingNotification.length) {
+      // Update the existing notification
+      existingNotification.replaceWith(newContent);
+    } else {
+      // No existing notification, add it before the validation controls
+      const validationContainer = $('#validation-controls-container');
+      if (validationContainer.length) {
+        validationContainer.before(newContent);
+      } else {
+        // Fallback: add to the filter controls container
+        this.app.elements.filtersContainer.prepend(newContent);
       }
+    }
 
-      // Check for default visibility
-      if (
-        this.app.config.settings.hideBehavior === 'hide_others' &&
-        this.app.config.settings.defaultVisibleColumns?.length > 0
-      ) {
-        messageContent += 'Default column visibility applied';
-        notificationClass = 'is-primary';
-        icon = 'cog';
-      }
+    // Re-bind column management events
+    this.bindColumnManagementEvents();
+  }
 
-      // Create the combined notification
-      statusMessages += `<div class="field"><div class="notification ${notificationClass} is-light">
-        <label class="label has-text-link"><span class="icon"><i class="fas fa-${icon}"></i></span> ${messageContent}</label>
+  /**
+   * Builds the column visibility notification HTML - ALWAYS shows column count
+   */
+  buildColumnVisibilityNotification() {
+    // Get column counts
+    const totalColumns = this.app.data.filtered[0]?.length || 0;
+    const hiddenColumns = this.app.state.hiddenColumns.size;
+    const visibleColumns = totalColumns - hiddenColumns;
+
+    // Start building the notification - always show column info
+    let messageContent = '';
+    let notificationClass = 'is-info';
+    let icon = 'eye';
+
+    // Always show the column count
+    messageContent = `${visibleColumns} of ${totalColumns} columns visible`;
+
+    // Adjust styling based on state
+    if (hiddenColumns > 0) {
+      messageContent += ` (${hiddenColumns} hidden)`;
+      notificationClass = 'is-warning';
+      icon = 'eye-slash';
+    }
+
+    // Create the notification with updated content
+    return `<div class="field" id="column-visibility-notification">
+      <div class="notification ${notificationClass} is-light">
+        <label class="label has-text-link">
+          <span class="icon"><i class="fas fa-${icon}"></i></span>
+          ${messageContent}
+        </label>
         <div class="buttons mt-2 are-small">
           <button class="button" id="show-column-settings"><span>Manage Columns</span></button>
           <button class="button" id="reset-to-defaults"><span>Reset to Defaults</span></button>
           <button class="button" id="show-all-override"><span>Show All</span></button>
         </div>
-      </div></div>`;
-    }
+      </div>
+    </div>`;
+  }
 
-    // Create the complete structure
+  /**
+   * Binds events specifically for column management buttons
+   */
+  bindColumnManagementEvents() {
+    const $ = jQuery;
+
+    // Column management buttons
+    $('#show-column-settings')
+      .off('click.columnManager')
+      .on('click.columnManager', () =>
+        this.app.columnManager.showColumnVisibilityModal()
+      );
+    $('#reset-to-defaults')
+      .off('click.columnManager')
+      .on('click.columnManager', () =>
+        this.app.columnManager.resetToDefaultColumns()
+      );
+    $('#show-all-override')
+      .off('click.columnManager')
+      .on('click.columnManager', () =>
+        this.app.columnManager.showAllColumnsOverride()
+      );
+  }
+
+  /**
+   * Creates the initial filter structure (only when it doesn't exist)
+   * MODIFIED: Removed column visibility notification logic since it's now handled separately
+   */
+  createFilterStructure() {
+    // Create the complete structure without column visibility notification
+    // (that will be added separately by updateColumnVisibilityStatus)
     const fullStructure = `
-      ${statusMessages}
       <div id="validation-controls-container" class="field"></div>
       <div class="field mb-2" id="active-filters-container" style="display: none;">
       <div class="field">
@@ -138,6 +188,9 @@ export class ExcelEditorFilterManager {
 
     this.app.elements.filtersContainer.html(fullStructure);
     this.app.utilities.logDebug('Created fresh filter structure');
+
+    // Add column visibility notification after creating the base structure
+    this.updateColumnVisibilityStatus();
   }
 
   /**
@@ -262,23 +315,6 @@ export class ExcelEditorFilterManager {
     $('#manage-filters-btn')
       .off('click.filterManager')
       .on('click.filterManager', () => this.showFilterManagementModal());
-
-    // Column management buttons
-    $('#show-column-settings')
-      .off('click.filterManager')
-      .on('click.filterManager', () =>
-        this.app.columnManager.showColumnVisibilityModal()
-      );
-    $('#reset-to-defaults')
-      .off('click.filterManager')
-      .on('click.filterManager', () =>
-        this.app.columnManager.resetToDefaultColumns()
-      );
-    $('#show-all-override')
-      .off('click.filterManager')
-      .on('click.filterManager', () =>
-        this.app.columnManager.showAllColumnsOverride()
-      );
   }
 
   /**
@@ -362,7 +398,7 @@ export class ExcelEditorFilterManager {
                   <p class="help mt-2"><span id="selected-count">0</span> of ${
                     uniqueValues.length
                   } values selected</p>
-                  <div class="field is-grouped is-grouped-right">
+                  <div class="field is-grouped is-grouped-right buttons">
                     <div class="control"><button class="button is-warning" id="clear-column-filter">
                       <span class="icon is-small"><i class="fas fa-times"></i></span>
                       <span>Clear Filter</span>

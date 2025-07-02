@@ -129,6 +129,11 @@ export class ExcelEditorDataManager {
     this.app.data.selected.clear();
     this.app.data.dirty = false;
 
+    // Reset subject ID link cache for new dataset
+    if (this.app.uiRenderer && this.app.uiRenderer.resetSubjectIdLinkCache) {
+      this.app.uiRenderer.resetSubjectIdLinkCache();
+    }
+
     this.applyDefaultColumnVisibility();
     this.app.uiRenderer.renderInterface();
     this.updateSelectionCount();

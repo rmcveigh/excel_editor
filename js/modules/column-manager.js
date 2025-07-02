@@ -34,7 +34,9 @@ export class ExcelEditorColumnManager {
         const isVisible = !this.app.state.hiddenColumns.has(index);
         const isEditable = this.app.config.editableColumns.includes(header);
         const editableTag = isEditable
-          ? `<span class="tag is-small is-info ml-2">${Drupal.t('Editable')}</span>`
+          ? `<span class="tag is-small is-info ml-2">${Drupal.t(
+              'Editable'
+            )}</span>`
           : '';
 
         return `
@@ -44,7 +46,9 @@ export class ExcelEditorColumnManager {
                    class="column-visibility-checkbox"
                    data-column-index="${index}"
                    ${isVisible ? 'checked' : ''}>
-            <span class="column-name">${this.app.utilities.escapeHtml(header)}</span>
+            <span class="column-name">${this.app.utilities.escapeHtml(
+              header
+            )}</span>
             ${editableTag}
           </label>
         </div>`;
@@ -80,7 +84,9 @@ export class ExcelEditorColumnManager {
    */
   bindColumnModalEvents(modal) {
     // Close modal handlers
-    const closeElements = modal.find('.modal-close, #cancel-column-visibility, .modal-background');
+    const closeElements = modal.find(
+      '.modal-close, #cancel-column-visibility, .modal-background'
+    );
     closeElements.on('click', () => modal.remove());
 
     // Show all columns handler
@@ -94,7 +100,10 @@ export class ExcelEditorColumnManager {
       checkboxes.each((index, checkbox) => {
         const colIndex = parseInt(jQuery(checkbox).data('column-index'), 10);
         const header = this.app.data.filtered[0][colIndex];
-        jQuery(checkbox).prop('checked', this.app.config.editableColumns.includes(header));
+        jQuery(checkbox).prop(
+          'checked',
+          this.app.config.editableColumns.includes(header)
+        );
       });
     });
 
@@ -126,16 +135,24 @@ export class ExcelEditorColumnManager {
       this.app.state.hiddenColumns.clear();
       modal.find('.column-visibility-checkbox').each((index, checkbox) => {
         if (!jQuery(checkbox).is(':checked')) {
-          const columnIndex = parseInt(jQuery(checkbox).data('column-index'), 10);
+          const columnIndex = parseInt(
+            jQuery(checkbox).data('column-index'),
+            10
+          );
           this.app.state.hiddenColumns.add(columnIndex);
         }
       });
 
       await this.app.uiRenderer.renderTable();
+
+      // Use setupFilters() to properly update the column count
       this.app.filterManager.setupFilters();
     } catch (error) {
       console.error('Error applying column visibility changes:', error);
-      this.app.utilities.showMessage('Failed to update column visibility.', 'error');
+      this.app.utilities.showMessage(
+        'Failed to update column visibility.',
+        'error'
+      );
     } finally {
       if (isLargeDataset) {
         this.app.utilities.hideProcessLoader();
@@ -155,11 +172,16 @@ export class ExcelEditorColumnManager {
     }
 
     try {
-      this.app.utilities.showQuickLoader('Resetting columns...');
       this.app.dataManager.applyDefaultColumnVisibility();
       await this.app.uiRenderer.renderTable();
+
+      // Use setupFilters() to properly update the column count
       this.app.filterManager.setupFilters();
-      this.app.utilities.showMessage('Columns reset to default visibility.', 'success');
+
+      this.app.utilities.showMessage(
+        'Columns reset to default visibility.',
+        'success'
+      );
     } catch (error) {
       console.error('Error resetting columns:', error);
       this.app.utilities.showMessage('Failed to reset columns.', 'error');
@@ -176,7 +198,9 @@ export class ExcelEditorColumnManager {
       this.app.utilities.showQuickLoader('Showing all columns...');
       this.app.state.hiddenColumns.clear();
       await this.app.uiRenderer.renderTable();
+
       this.app.filterManager.setupFilters();
+
       this.app.utilities.showMessage('All columns are now visible.', 'success');
     } catch (error) {
       console.error('Error showing all columns:', error);
