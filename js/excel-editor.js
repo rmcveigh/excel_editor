@@ -48,6 +48,7 @@ class ExcelEditor {
       maxFileSize: 10 * 1024 * 1024, // 10MB
       supportedFormats: ['.xlsx', '.xls', '.csv'],
       autosaveInterval: 5 * 60 * 1000, // 5 minutes
+      base_path: window.drupalSettings?.path?.baseUrl || '/',
     };
 
     // Autosave timer
@@ -113,39 +114,13 @@ class ExcelEditor {
 
       if (workerReady) {
         this.utilities.logDebug('Web Worker initialized successfully');
-        this.showWorkerStatus('ready');
       } else {
         this.utilities.logDebug(
           'Web Worker initialization failed, using fallback'
         );
-        this.showWorkerStatus('fallback');
       }
     } catch (error) {
       this.utilities.logDebug('Web Worker initialization error:', error);
-      this.showWorkerStatus('error');
-    }
-  }
-
-  /**
-   * Show worker status to user (optional)
-   */
-  showWorkerStatus(status) {
-    if (!this.config.settings.debug) return; // Only show in debug mode
-
-    const messages = {
-      ready: 'Background processing enabled for better performance',
-      fallback: 'Using standard processing mode',
-      error: 'Background processing unavailable, using standard mode',
-    };
-
-    const types = {
-      ready: 'success',
-      fallback: 'info',
-      error: 'warning',
-    };
-
-    if (messages[status]) {
-      this.utilities.showMessage(messages[status], types[status], 3000);
     }
   }
 

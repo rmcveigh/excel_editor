@@ -385,4 +385,16 @@ export class ExcelEditorUtilities {
   async apiDelete(url) {
     return this.apiCall('DELETE', url);
   }
+
+  /**
+   * Logs debug messages in the worker context.
+   * @param {string} message - The debug message to log.
+   * @param {any} args - Additional arguments to log.
+   */
+  debugWorker(message, ...args) {
+    if (this.app.config.settings.debug) {
+      // eslint-disable-next-line no-console
+      console.log(`%c[Worker Debug] ${message}`, 'color: #a044ff', ...args);
+    }
+  }
 }

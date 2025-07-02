@@ -4,6 +4,7 @@ namespace Drupal\excel_editor\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Database\Connection;
+use Drupal\Core\Extension\ModuleExtensionList;
 use Drupal\excel_editor\DraftManager;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -29,16 +30,26 @@ class ExcelEditorController extends ControllerBase {
   protected Connection $connection;
 
   /**
+   * Module extension list service.
+   *
+   * @var \Drupal\Core\Extension\ModuleExtensionList
+   */
+  protected $moduleExtensionList;
+
+  /**
    * Constructs a new ExcelEditorController object.
    *
    * @param \Drupal\excel_editor\DraftManager $draft_manager
    *   The draft manager service.
    * @param \Drupal\Core\Database\Connection $connection
    *   The database connection.
+   * @param \Drupal\Core\Extension\ModuleExtensionList $module_extension_list
+   *   The module extension list service.
    */
-  public function __construct(DraftManager $draft_manager, Connection $connection) {
+  public function __construct(DraftManager $draft_manager, Connection $connection, ModuleExtensionList $module_extension_list) {
     $this->draftManager = $draft_manager;
     $this->connection = $connection;
+    $this->moduleExtensionList = $module_extension_list;
   }
 
   /**
@@ -47,7 +58,8 @@ class ExcelEditorController extends ControllerBase {
   public static function create(ContainerInterface $container) {
     return new static(
       $container->get('draft_manager'),
-      $container->get('database')
+      $container->get('database'),
+      $container->get('extension.list.module')
     );
   }
 
@@ -60,6 +72,11 @@ class ExcelEditorController extends ControllerBase {
     $hideBehavior = $config->get('hide_behavior') ?: 'show_all';
     $maxVisibleColumns = $config->get('max_visible_columns') ?: 50;
     $autosaveEnabled = $config->get('autosave_enabled');
+    // Get the module path.
+    $module_path = $this->moduleExtensionList->getPath('excel_editor');
+
+    // Generate the proper path to the worker file.
+    $worker_path = '/' . $module_path . '/js/workers/excel-worker.js';
 
     // Handle string/array from config.
     if (is_string($defaultVisibleColumns)) {
@@ -89,6 +106,9 @@ class ExcelEditorController extends ControllerBase {
               'hideBehavior' => $hideBehavior,
               'maxVisibleColumns' => (int) $maxVisibleColumns,
               'debug' => $this->currentUser()->hasPermission('administer excel editor'),
+              'worker_path' => $worker_path,
+              'base_path' => base_path(),
+              'module_path' => '/' . $module_path,
             ],
           ],
         ],

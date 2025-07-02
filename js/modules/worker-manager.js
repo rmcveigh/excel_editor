@@ -18,11 +18,7 @@ export class ExcelEditorWorkerManager {
    * Check if Web Workers are supported
    */
   checkWorkerSupport() {
-    return (
-      typeof Worker !== 'undefined' &&
-      typeof window !== 'undefined' &&
-      'importScripts' in Worker.prototype
-    );
+    return typeof Worker !== 'undefined' && typeof window !== 'undefined';
   }
 
   /**
@@ -35,13 +31,30 @@ export class ExcelEditorWorkerManager {
     }
 
     try {
-      // Create worker URL from the worker script
-      const workerScript = this.getWorkerScript();
-      const blob = new Blob([workerScript], { type: 'application/javascript' });
-      this.workerUrl = URL.createObjectURL(blob);
+      // First attempt to load the worker from a separate file
+      try {
+        const workerPath =
+          '/modules/custom/excel_editor/js/workers/excel-worker.js';
+        this.worker = new Worker(workerPath);
+        this.app.utilities.logDebug('Worker created from external file');
+      } catch (pathError) {
+        // If loading from external file fails, fall back to inline script
+        this.app.utilities.logDebug(
+          'Failed to load worker from file, using fallback:',
+          pathError
+        );
 
-      // Create the worker
-      this.worker = new Worker(this.workerUrl);
+        const workerScript = this.getWorkerScript();
+        const blob = new Blob([workerScript], {
+          type: 'application/javascript',
+        });
+        const blobURL = URL.createObjectURL(blob);
+
+        this.worker = new Worker(blobURL);
+        this.workerUrl = blobURL; // Store for cleanup later
+
+        this.app.utilities.logDebug('Worker created from blob URL');
+      }
 
       // Set up message handler
       this.worker.onmessage = (event) => this.handleWorkerMessage(event);
@@ -52,22 +65,33 @@ export class ExcelEditorWorkerManager {
       // Wait for worker to be ready
       return new Promise((resolve) => {
         const checkReady = (event) => {
-          if (event.data.type === 'worker_ready') {
+          if (event.data && event.data.type === 'worker_ready') {
             this.isReady = event.data.success;
             this.worker.removeEventListener('message', checkReady);
+
+            // Log the result for debugging
+            this.app.utilities.logDebug('Worker ready status:', this.isReady);
+            if (!this.isReady && event.data.error) {
+              this.app.utilities.logDebug(
+                'Worker initialization error:',
+                event.data.error
+              );
+            }
+
             resolve(this.isReady);
           }
         };
 
         this.worker.addEventListener('message', checkReady);
 
-        // Timeout after 5 seconds
+        // Timeout after 10 seconds (increased from 5 seconds)
         setTimeout(() => {
           if (!this.isReady) {
+            this.app.utilities.logDebug('Worker initialization timed out');
             this.worker.removeEventListener('message', checkReady);
             resolve(false);
           }
-        }, 5000);
+        }, 10000);
       });
     } catch (error) {
       this.app.utilities.logDebug('Failed to initialize worker:', error);

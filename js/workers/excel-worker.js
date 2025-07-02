@@ -1,13 +1,25 @@
 /**
  * @file
  * Excel Worker - Handles Excel parsing and export operations in a Web Worker
- * Location: js/workers/excel-worker.js
  */
 
+// Log initialization to help with debugging
+self.console.log('Excel worker initializing...');
+
 // Import SheetJS library in worker context
-importScripts(
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
-);
+try {
+  importScripts(
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+  );
+  self.console.log('XLSX library loaded successfully');
+} catch (error) {
+  self.console.error('Error loading XLSX library:', error);
+  self.postMessage({
+    type: 'worker_ready',
+    success: false,
+    error: 'Failed to load XLSX library: ' + error.message,
+  });
+}
 
 /**
  * Excel Worker class to handle all Excel operations
@@ -34,7 +46,9 @@ class ExcelWorker {
         success: true,
         message: 'Excel worker initialized successfully',
       });
+      self.console.log('Excel worker initialized successfully');
     } catch (error) {
+      self.console.error('Worker initialization failed:', error);
       this.postMessage({
         type: 'worker_ready',
         success: false,
@@ -509,21 +523,20 @@ class ExcelWorker {
   }
 }
 
-// Initialize worker
+// Initialize the worker
 const excelWorker = new ExcelWorker();
 
-// Set up message handler
+// Set up message handling
 self.onmessage = function (event) {
   excelWorker.handleMessage(event);
 };
 
-// Handle worker errors
+// Set up error handling
 self.onerror = function (error) {
+  self.console.error('Worker global error:', error);
   self.postMessage({
     type: 'worker_error',
     error: error.message,
-    filename: error.filename,
-    lineno: error.lineno,
   });
 };
 
