@@ -1,9 +1,10 @@
 /**
  * @file
- * Excel Editor JavaScript - Main class and initialization
+ * Excel Editor JavaScript - Main class and initialization with Web Worker support
  */
 
 import { ExcelEditorUtilities } from './modules/utilities.js';
+import { ExcelEditorWorkerManager } from './modules/worker-manager.js';
 import { ExcelEditorBarcodeSystem } from './modules/barcode-system.js';
 import { ExcelEditorDataManager } from './modules/data-manager.js';
 import { ExcelEditorUIRenderer } from './modules/ui-renderer.js';
@@ -60,6 +61,7 @@ class ExcelEditor {
 
     // Initialize modules
     this.utilities = new ExcelEditorUtilities(this);
+    this.workerManager = new ExcelEditorWorkerManager(this);
     this.barcodeSystem = new ExcelEditorBarcodeSystem(this);
     this.dataManager = new ExcelEditorDataManager(this);
     this.uiRenderer = new ExcelEditorUIRenderer(this);
@@ -76,12 +78,16 @@ class ExcelEditor {
   /**
    * Main initialization method.
    */
-  init() {
+  async init() {
     try {
       this.checkDependencies();
       this.cacheElements();
       this.utilities.getCsrfToken();
       this.utilities.hideLoading();
+
+      // Initialize worker manager (non-blocking)
+      await this.initializeWorkerManager();
+
       this.bindEvents();
       this.draftManager.loadDrafts();
 
@@ -93,6 +99,53 @@ class ExcelEditor {
       this.utilities.logDebug('Excel Editor initialized successfully');
     } catch (error) {
       this.utilities.handleError('Failed to initialize Excel Editor', error);
+    }
+  }
+
+  /**
+   * Initialize the worker manager
+   */
+  async initializeWorkerManager() {
+    try {
+      this.utilities.logDebug('Initializing Web Worker...');
+
+      const workerReady = await this.workerManager.initialize();
+
+      if (workerReady) {
+        this.utilities.logDebug('Web Worker initialized successfully');
+        this.showWorkerStatus('ready');
+      } else {
+        this.utilities.logDebug(
+          'Web Worker initialization failed, using fallback'
+        );
+        this.showWorkerStatus('fallback');
+      }
+    } catch (error) {
+      this.utilities.logDebug('Web Worker initialization error:', error);
+      this.showWorkerStatus('error');
+    }
+  }
+
+  /**
+   * Show worker status to user (optional)
+   */
+  showWorkerStatus(status) {
+    if (!this.config.settings.debug) return; // Only show in debug mode
+
+    const messages = {
+      ready: 'Background processing enabled for better performance',
+      fallback: 'Using standard processing mode',
+      error: 'Background processing unavailable, using standard mode',
+    };
+
+    const types = {
+      ready: 'success',
+      fallback: 'info',
+      error: 'warning',
+    };
+
+    if (messages[status]) {
+      this.utilities.showMessage(messages[status], types[status], 3000);
     }
   }
 
@@ -185,6 +238,34 @@ class ExcelEditor {
 
     // Window events
     $(window).on('beforeunload', () => this.handleBeforeUnload());
+
+    // Performance monitoring events (debug mode only)
+    if (this.config.settings.debug) {
+      this.bindPerformanceEvents();
+    }
+  }
+
+  /**
+   * Bind performance monitoring events
+   */
+  bindPerformanceEvents() {
+    // Monitor worker performance
+    if (this.workerManager) {
+      // Add debug info to export buttons
+      this.elements.exportBtn.attr(
+        'title',
+        this.workerManager.isAvailable()
+          ? 'Export (with background processing)'
+          : 'Export (standard processing)'
+      );
+
+      this.elements.exportAllBtn.attr(
+        'title',
+        this.workerManager.isAvailable()
+          ? 'Export All (with background processing)'
+          : 'Export All (standard processing)'
+      );
+    }
   }
 
   /**
@@ -379,6 +460,33 @@ class ExcelEditor {
       e.preventDefault();
       this.draftManager.saveDraft();
     }
+
+    // Debug shortcut to show worker status
+    if (
+      this.config.settings.debug &&
+      (e.ctrlKey || e.metaKey) &&
+      e.shiftKey &&
+      e.key === 'W'
+    ) {
+      e.preventDefault();
+      this.showWorkerDebugInfo();
+    }
+  }
+
+  /**
+   * Show worker debug information
+   */
+  showWorkerDebugInfo() {
+    if (!this.config.settings.debug) return;
+
+    const status = this.workerManager.getStatus();
+    const message = `Worker Status:
+    • Supported: ${status.supported}
+    • Ready: ${status.ready}
+    • Pending Tasks: ${status.pendingTasks}
+    • Available: ${this.workerManager.isAvailable()}`;
+
+    alert(message);
   }
 
   /**
@@ -422,6 +530,84 @@ class ExcelEditor {
     this.dataManager.updateSelectionCount();
     this.dataManager.updateSelectAllCheckbox();
   }
+
+  // =========================================================================
+  // PERFORMANCE MONITORING
+  // =========================================================================
+
+  /**
+   * Monitor operation performance
+   * @param {string} operation - Name of the operation
+   * @param {Function} fn - Function to execute
+   * @returns {Promise<any>} - Result of the operation
+   */
+  async monitorPerformance(operation, fn) {
+    if (!this.config.settings.debug) {
+      return fn();
+    }
+
+    const startTime = performance.now();
+    this.utilities.logDebug(`Starting operation: ${operation}`);
+
+    try {
+      const result = await fn();
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+
+      this.utilities.logDebug(
+        `Operation ${operation} completed in ${duration}ms`
+      );
+
+      // Show performance notification for long operations
+      if (duration > 2000) {
+        this.utilities.showMessage(
+          `${operation} completed in ${(duration / 1000).toFixed(1)}s`,
+          'info',
+          3000
+        );
+      }
+
+      return result;
+    } catch (error) {
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+
+      this.utilities.logDebug(
+        `Operation ${operation} failed after ${duration}ms:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  // =========================================================================
+  // CLEANUP
+  // =========================================================================
+
+  /**
+   * Clean up resources when the application is destroyed
+   */
+  destroy() {
+    // Terminate worker
+    if (this.workerManager) {
+      this.workerManager.terminate();
+    }
+
+    // Stop autosave
+    this.utilities.stopAutosave();
+
+    // Clear intervals and timeouts
+    if (this.autosaveTimer) {
+      clearInterval(this.autosaveTimer);
+    }
+
+    // Remove event listeners
+    const $ = jQuery;
+    $(document).off('keydown');
+    $(window).off('beforeunload');
+
+    this.utilities.logDebug('Excel Editor resources cleaned up');
+  }
 }
 
 // =========================================================================
@@ -455,6 +641,13 @@ async function initializeExcelEditor(element) {
     // Create and store the application instance
     const app = new ExcelEditor();
     element.excelEditor = app;
+
+    // Cleanup on page unload
+    $(window).on('beforeunload', () => {
+      if (app && typeof app.destroy === 'function') {
+        app.destroy();
+      }
+    });
 
     // Make it globally accessible for debugging (in development only)
     if (window.location.search.includes('debug=1')) {
@@ -503,6 +696,22 @@ Drupal.behaviors.excelEditor = {
     ) {
       initializeExcelEditor(element);
     });
+  },
+
+  detach: function (context, settings, trigger) {
+    // Clean up when elements are removed
+    if (trigger === 'unload') {
+      once
+        .remove('excel-editor', '.excel-editor-container', context)
+        .forEach(function (element) {
+          if (
+            element.excelEditor &&
+            typeof element.excelEditor.destroy === 'function'
+          ) {
+            element.excelEditor.destroy();
+          }
+        });
+    }
   },
 };
 

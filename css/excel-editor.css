@@ -1,4 +1,371 @@
 /* ==========================================================================
+   Excel Editor CSS - Complete File with Web Worker Support
+   ========================================================================== */
+
+/* ==========================================================================
+   Web Worker Progress Indicators
+   ========================================================================== */
+
+.excel-editor-progress {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  backdrop-filter: blur(5px);
+}
+
+.progress-bar-container {
+  margin-bottom: 0.75rem;
+}
+
+.progress-bar-container .progress {
+  height: 1rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-bar-container .progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 0.5rem;
+}
+
+.progress-bar-container .progress::-webkit-progress-value {
+  background: linear-gradient(45deg, #3273dc, #48c774);
+  border-radius: 0.5rem;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-container .progress::-moz-progress-bar {
+  background: linear-gradient(45deg, #3273dc, #48c774);
+  border-radius: 0.5rem;
+}
+
+.progress-message {
+  text-align: center;
+  color: white;
+  font-weight: 500;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Enhanced Loading States with Worker Support */
+.excel-editor-overlay-loader {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 99999 !important;
+  backdrop-filter: blur(3px);
+  animation: loaderFadeIn 0.3s ease-out;
+}
+
+.excel-editor-overlay-loader .loading-content {
+  text-align: center;
+  padding: 3rem 2.5rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e9ecef;
+  max-width: 500px;
+  min-width: 400px;
+  position: relative;
+}
+
+.excel-editor-overlay-loader .progress {
+  margin: 1rem 0;
+  height: 1.25rem;
+  border-radius: 0.75rem;
+}
+
+.excel-editor-overlay-loader .progress.is-primary::-webkit-progress-value {
+  background: linear-gradient(45deg, #3273dc, #48c774);
+}
+
+.excel-editor-overlay-loader .progress.is-primary::-moz-progress-bar {
+  background: linear-gradient(45deg, #3273dc, #48c774);
+}
+
+/* Worker Status Indicators */
+.worker-status-indicator {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  z-index: 9998;
+  transition: all 0.3s ease;
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.worker-status-indicator.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.worker-status-indicator.ready {
+  background: rgba(72, 199, 116, 0.9);
+}
+
+.worker-status-indicator.error {
+  background: rgba(241, 70, 104, 0.9);
+}
+
+.worker-status-indicator.fallback {
+  background: rgba(255, 221, 87, 0.9);
+  color: rgba(0, 0, 0, 0.8);
+}
+
+/* Enhanced Performance Indicators */
+.performance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(50, 115, 220, 0.1);
+  color: #3273dc;
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(50, 115, 220, 0.2);
+}
+
+.performance-badge.worker-enabled {
+  background: rgba(72, 199, 116, 0.1);
+  color: #48c774;
+  border-color: rgba(72, 199, 116, 0.2);
+}
+
+.performance-badge .icon {
+  font-size: 0.7rem;
+}
+
+/* Export Modal Enhancements */
+.export-options-modal .worker-info {
+  background: linear-gradient(135deg, rgba(50, 115, 220, 0.1), rgba(72, 199, 116, 0.1));
+  border: 1px solid rgba(50, 115, 220, 0.2);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.export-options-modal .worker-info .icon {
+  color: #3273dc;
+  margin-right: 0.5rem;
+}
+
+/* Progress Animation Enhancements */
+@keyframes progressPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.9;
+  }
+}
+
+.excel-editor-overlay-loader.processing .loading-content {
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+/* File Size Indicators */
+.file-size-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  margin-top: 1rem;
+}
+
+.file-size-indicator.large-file {
+  background: rgba(255, 221, 87, 0.2);
+  border-color: #ffdd57;
+  color: #947600;
+}
+
+.file-size-indicator.large-file .icon {
+  color: #ffdd57;
+}
+
+/* ==========================================================================
+   Enhanced Button States
+   ========================================================================== */
+
+.button.worker-enhanced {
+  position: relative;
+  overflow: hidden;
+}
+
+.button.worker-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.6s ease;
+}
+
+.button.worker-enhanced:hover::before {
+  left: 100%;
+}
+
+.button.processing {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.button.processing .icon {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================================================
+   Advanced Loading Animations
+   ========================================================================== */
+
+.excel-editor-spinner {
+  width: 3rem;
+  height: 3rem;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #3273dc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Multi-stage progress indicator */
+.progress-stages {
+  display: flex;
+  justify-content: space-between;
+  margin: 1rem 0;
+  position: relative;
+}
+
+.progress-stages::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e9ecef;
+  z-index: 1;
+}
+
+.progress-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  background: white;
+  padding: 0 0.5rem;
+}
+
+.progress-stage-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #e9ecef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.progress-stage.active .progress-stage-icon {
+  background: #3273dc;
+  color: white;
+  transform: scale(1.1);
+}
+
+.progress-stage.completed .progress-stage-icon {
+  background: #48c774;
+  color: white;
+}
+
+.progress-stage-label {
+  font-size: 0.75rem;
+  color: #6c757d;
+  text-align: center;
+  font-weight: 500;
+}
+
+.progress-stage.active .progress-stage-label {
+  color: #3273dc;
+  font-weight: 600;
+}
+
+.progress-stage.completed .progress-stage-label {
+  color: #48c774;
+}
+
+/* ==========================================================================
+   Debug Panel (Development Only)
+   ========================================================================== */
+
+.debug-panel {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+  max-width: 300px;
+  z-index: 9997;
+  display: none;
+}
+
+.debug-panel.show {
+  display: block;
+}
+
+.debug-panel .debug-item {
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.debug-panel .debug-item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.debug-panel .debug-label {
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.debug-panel .debug-value {
+  color: #90ee90;
+}
+
+/* ==========================================================================
    Barcode Validation Styles
    ========================================================================== */
 
@@ -518,32 +885,6 @@
   display: block !important;
 }
 
-.excel-editor-overlay-loader {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  background: rgba(255, 255, 255, 0.95) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  z-index: 99999 !important;
-  backdrop-filter: blur(3px);
-  animation: loaderFadeIn 0.2s ease-out;
-}
-
-.excel-editor-overlay-loader .loading-content {
-  text-align: center;
-  padding: 3rem 2.5rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  border: 1px solid #e9ecef;
-  max-width: 400px;
-  min-width: 300px;
-}
-
 .excel-editor-quick-loader {
   position: fixed !important;
   top: 20px !important;
@@ -704,6 +1045,34 @@
     max-height: calc(100vh - 2rem);
     overflow-y: auto;
   }
+
+  .excel-editor-overlay-loader .loading-content {
+    margin: 1rem;
+    min-width: calc(100vw - 2rem);
+    max-width: calc(100vw - 2rem);
+    padding: 2rem 1.5rem;
+  }
+
+  .progress-stages {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .progress-stages::before {
+    display: none;
+  }
+
+  .worker-status-indicator {
+    position: static;
+    margin: 1rem;
+    display: inline-block;
+  }
+
+  .file-size-indicator {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.25rem;
+  }
 }
 
 @media print {
@@ -712,7 +1081,12 @@
   .excel-editor-drafts,
   .button,
   .notification,
-  #active-filters-container {
+  #active-filters-container,
+  .excel-editor-overlay-loader,
+  .worker-status-indicator,
+  .debug-panel,
+  .performance-badge,
+  .progress-stages {
     display: none !important;
   }
 
@@ -755,6 +1129,18 @@
   #active-filters .tag.is-danger {
     border-color: #dc2626;
   }
+
+  .worker-status-indicator {
+    border: 2px solid;
+  }
+
+  .progress-stages::before {
+    background: currentColor;
+  }
+
+  .performance-badge {
+    border-width: 2px;
+  }
 }
 
 /* Reduced Motion Support */
@@ -762,8 +1148,14 @@
   #active-filters .tag,
   #clear-all-filters-btn,
   #clear-last-filter-btn,
-  .filter-checkbox-item {
+  .filter-checkbox-item,
+  .excel-editor-spinner,
+  .progress-stage-icon,
+  .button.worker-enhanced::before,
+  .excel-editor-overlay-loader,
+  .worker-status-indicator {
     transition: none;
+    animation: none !important;
   }
 
   .filter-fade-in,
@@ -776,4 +1168,10 @@
   .excel-editor-quick-loader {
     animation: none;
   }
+}
+
+/* Focus management for progress elements */
+.excel-editor-overlay-loader:focus-within {
+  outline: 2px solid #3273dc;
+  outline-offset: 4px;
 }

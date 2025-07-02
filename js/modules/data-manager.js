@@ -1,6 +1,6 @@
 /**
  * @file
- * Excel Editor Data Manager Module
+ * Excel Editor Data Manager Module - Updated with Web Worker Support
  */
 
 export class ExcelEditorDataManager {
@@ -17,13 +17,23 @@ export class ExcelEditorDataManager {
       if (!this.app.utilities.validateFile(file)) return;
 
       this.app.utilities.showLoading('Processing Excel file...');
+
+      // Read file as ArrayBuffer for worker compatibility
       const data = await this.app.utilities.readFile(file);
       let parsedData;
 
-      if (file.name.toLowerCase().endsWith('.csv')) {
-        parsedData = this.parseCSV(data);
+      // Determine if we should use worker or fallback
+      const useWorker =
+        this.app.workerManager && this.app.workerManager.isAvailable();
+
+      if (useWorker) {
+        this.app.utilities.logDebug('Using Web Worker for file processing');
+        parsedData = await this.processFileWithWorker(file, data);
       } else {
-        parsedData = await this.parseExcel(data);
+        this.app.utilities.logDebug(
+          'Using main thread for file processing (fallback)'
+        );
+        parsedData = await this.processFileMainThread(file, data);
       }
 
       this.loadData(parsedData);
@@ -43,7 +53,97 @@ export class ExcelEditorDataManager {
   }
 
   /**
-   * Parses CSV data from an ArrayBuffer.
+   * Process file using Web Worker
+   * @param {File} file - The file being processed
+   * @param {ArrayBuffer} data - The file data
+   * @returns {Promise<Array>} - Parsed data
+   */
+  async processFileWithWorker(file, data) {
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+
+    // Set up progress tracking
+    const onProgress = (progress, message) => {
+      this.updateLoadingProgress(progress, message);
+    };
+
+    try {
+      let result;
+
+      if (isCSV) {
+        // Convert ArrayBuffer to text for CSV processing
+        const textData = new TextDecoder().decode(data);
+        result = await this.app.workerManager.parseCSV(textData, onProgress);
+      } else {
+        result = await this.app.workerManager.parseExcel(data, onProgress);
+      }
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      this.app.utilities.logDebug(
+        'Worker processing completed:',
+        result.metadata
+      );
+      return result.data;
+    } catch (error) {
+      this.app.utilities.logDebug(
+        'Worker processing failed, falling back to main thread:',
+        error
+      );
+      // Fallback to main thread processing
+      return this.processFileMainThread(file, data);
+    }
+  }
+
+  /**
+   * Process file on main thread (fallback)
+   * @param {File} file - The file being processed
+   * @param {ArrayBuffer} data - The file data
+   * @returns {Promise<Array>} - Parsed data
+   */
+  async processFileMainThread(file, data) {
+    const isCSV = file.name.toLowerCase().endsWith('.csv');
+
+    if (isCSV) {
+      return this.parseCSV(data);
+    } else {
+      return await this.parseExcel(data);
+    }
+  }
+
+  /**
+   * Update loading progress display
+   * @param {number} progress - Progress percentage (0-100)
+   * @param {string} message - Progress message
+   */
+  updateLoadingProgress(progress, message) {
+    const $ = jQuery;
+
+    // Update existing loading message or create progress indicator
+    let progressContainer = $('.excel-editor-progress');
+
+    if (progressContainer.length === 0) {
+      progressContainer = $(`
+        <div class="excel-editor-progress">
+          <div class="progress-bar-container">
+            <progress class="progress is-primary" value="0" max="100"></progress>
+          </div>
+          <p class="progress-message">Loading...</p>
+        </div>
+      `);
+
+      $('.excel-editor-loading').append(progressContainer);
+    }
+
+    progressContainer.find('.progress').attr('value', progress);
+    progressContainer
+      .find('.progress-message')
+      .text(message || 'Processing...');
+  }
+
+  /**
+   * Parses CSV data from an ArrayBuffer (fallback method).
    */
   parseCSV(data) {
     const text = new TextDecoder().decode(data);
@@ -56,7 +156,7 @@ export class ExcelEditorDataManager {
   }
 
   /**
-   * Parses Excel (.xls, .xlsx) data from an ArrayBuffer using SheetJS.
+   * Parses Excel (.xls, .xlsx) data from an ArrayBuffer using SheetJS (fallback method).
    */
   async parseExcel(data) {
     return new Promise((resolve, reject) => {
@@ -107,21 +207,92 @@ export class ExcelEditorDataManager {
   }
 
   /**
+   * Enhanced file processing with batch operations for large datasets
+   * @param {Array} data - The parsed data to process
+   */
+  async processLargeDataset(data) {
+    const BATCH_SIZE = 1000;
+    const isLarge = data.length > BATCH_SIZE;
+
+    if (!isLarge) {
+      return data;
+    }
+
+    this.app.utilities.showProcessLoader('Processing large dataset...');
+
+    try {
+      // Process data in batches to prevent UI blocking
+      const processed = [];
+
+      for (let i = 0; i < data.length; i += BATCH_SIZE) {
+        const batch = data.slice(i, i + BATCH_SIZE);
+
+        // Update progress
+        const progress = Math.round((i / data.length) * 100);
+        this.updateLoadingProgress(
+          progress,
+          `Processing rows ${i + 1} to ${Math.min(i + BATCH_SIZE, data.length)}`
+        );
+
+        // Process batch
+        const processedBatch = this.processBatch(batch);
+        processed.push(...processedBatch);
+
+        // Yield to browser for UI updates
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      return processed;
+    } finally {
+      this.app.utilities.hideProcessLoader();
+    }
+  }
+
+  /**
+   * Process a batch of data rows
+   * @param {Array} batch - Batch of rows to process
+   * @returns {Array} - Processed batch
+   */
+  processBatch(batch) {
+    return batch.map((row) => {
+      if (!Array.isArray(row)) return row;
+
+      return row.map((cell) => {
+        // Clean and standardize cell values
+        if (cell === null || cell === undefined) {
+          return '';
+        }
+
+        let cleaned = String(cell).trim();
+
+        // Remove surrounding quotes if present
+        if (
+          cleaned.length >= 2 &&
+          cleaned.startsWith('"') &&
+          cleaned.endsWith('"')
+        ) {
+          cleaned = cleaned.slice(1, -1);
+        }
+
+        return cleaned;
+      });
+    });
+  }
+
+  /**
    * Loads the parsed data into the application's state.
    */
-  loadData(data) {
+  async loadData(data) {
     this.app.utilities.logDebug('Loading data into application...', data);
 
     if (!data || data.length === 0) {
       throw new Error('No data found in file');
     }
 
-    const trimmedData = data.map((row) => {
-      if (!Array.isArray(row)) return row;
-      return row.map((cell) => String(cell || '').trim());
-    });
+    // Process large datasets efficiently
+    const processedData = await this.processLargeDataset(data);
 
-    this.app.data.original = this.app.utilities.deepClone(trimmedData);
+    this.app.data.original = this.app.utilities.deepClone(processedData);
     this.addEditableColumns();
     this.app.data.filtered = this.app.utilities.deepClone(
       this.app.data.original
@@ -135,7 +306,7 @@ export class ExcelEditorDataManager {
     }
 
     this.applyDefaultColumnVisibility();
-    this.app.uiRenderer.renderInterface();
+    await this.app.uiRenderer.renderInterface();
     this.updateSelectionCount();
 
     // Trigger initial validation after data is loaded and interface is rendered
@@ -147,7 +318,7 @@ export class ExcelEditorDataManager {
   }
 
   /**
-   * Adds the default editable columns to the dataset if they don't already exist.
+   * Enhanced method to handle editable columns with better performance
    */
   addEditableColumns() {
     if (!this.app.data.original.length) return;
@@ -160,6 +331,35 @@ export class ExcelEditorDataManager {
     ) {
       return;
     }
+
+    // Use worker for barcode generation if available and dataset is large
+    const isLargeDataset = this.app.data.original.length > 500;
+    const useWorkerForBarcodes =
+      isLargeDataset &&
+      this.app.workerManager &&
+      this.app.workerManager.isAvailable();
+
+    if (useWorkerForBarcodes) {
+      this.addEditableColumnsWithWorker();
+    } else {
+      this.addEditableColumnsMainThread();
+    }
+  }
+
+  /**
+   * Add editable columns using worker for barcode generation
+   */
+  async addEditableColumnsWithWorker() {
+    // For now, use main thread method as worker barcode generation
+    // would require more complex implementation
+    this.addEditableColumnsMainThread();
+  }
+
+  /**
+   * Add editable columns on main thread
+   */
+  addEditableColumnsMainThread() {
+    const headerRow = this.app.data.original[0];
 
     // Detect file type and find column indices BEFORE modifying the header
     const isTissueResearchFile = this.detectTissueResearchFile(headerRow);
@@ -414,6 +614,17 @@ export class ExcelEditorDataManager {
     this.app.utilities.logDebug(
       `Applied default column visibility. Matched ${matchedColumns} configured columns.`
     );
+  }
+
+  /**
+   * Process loaded data (for draft loading)
+   */
+  processLoadedData() {
+    this.app.data.filtered = this.app.utilities.deepClone(
+      this.app.data.original
+    );
+    this.app.uiRenderer.renderInterface();
+    this.updateSelectionCount();
   }
 
   /**
