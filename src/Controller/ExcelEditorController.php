@@ -26,7 +26,7 @@ class ExcelEditorController extends ControllerBase {
    *
    * @var \Drupal\Core\Database\Connection
    */
-  protected $connection;
+  protected Connection $connection;
 
   /**
    * Constructs a new ExcelEditorController object.
@@ -241,16 +241,27 @@ class ExcelEditorController extends ControllerBase {
           $dog_id = $result[$grls_id]->id;
           $label = $result[$grls_id]->name;
 
-          // Load just the entity storage to generate the URL.
-          $dogStorage = $this->entityTypeManager->getStorage('grls_dog');
-          $dog = $dogStorage->load($dog_id);
+          try {
+            // Use the method call instead of property access.
+            $dogStorage = $this->entityTypeManager()->getStorage('grls_dog');
+            $dog = $dogStorage->load($dog_id);
 
-          if ($dog) {
-            $urls[$grls_id] = [
-              'url' => $dog->toUrl('canonical')->setAbsolute()->toString(),
-              'label' => $label,
-              'entity_id' => $dog_id,
-            ];
+            if ($dog) {
+              $urls[$grls_id] = [
+                'url' => $dog->toUrl('canonical')->toString(),
+                'label' => $label,
+                'entity_id' => $dog_id,
+              ];
+            }
+          }
+          catch (\Exception $entityError) {
+            // Log the error but continue processing other entities.
+            $this->getLogger('excel_editor')->warning('Failed to load dog entity @id: @error', [
+              '@id' => $dog_id,
+              '@error' => $entityError->getMessage(),
+            ]);
+            // Skip this entity but continue with others.
+            continue;
           }
         }
       }
@@ -261,6 +272,7 @@ class ExcelEditorController extends ControllerBase {
       ]);
     }
     catch (\Exception $e) {
+      $this->getLogger('excel_editor')->error('Error getting dog entity URLs: @error', ['@error' => $e->getMessage()]);
       return new JsonResponse([
         'success' => FALSE,
         'message' => 'Error getting dog entity URLs: ' . $e->getMessage(),

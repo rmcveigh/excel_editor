@@ -347,4 +347,42 @@ export class ExcelEditorUtilities {
       this.logDebug('Autosave stopped.');
     }
   }
+
+  /**
+   * Convenience method for GET requests.
+   * @param {string} url - The API endpoint URL.
+   * @return {Promise<Object>} - A promise that resolves with the response data.
+   */
+  async apiGet(url) {
+    return this.apiCall('GET', url);
+  }
+
+  /**
+   * Convenience method for POST requests.
+   * @param {string} url - The API endpoint URL.
+   * @param {Object} data - The data to send with the request.
+   * @return {Promise<Object>} - A promise that resolves with the response data.
+   */
+  async apiPost(url, data) {
+    return this.apiCall('POST', url, data);
+  }
+
+  /**
+   * Convenience method for PUT requests.
+   * @param {string} url - The API endpoint URL.
+   * @param {Object} data - The data to send with the request.
+   * @return {Promise<Object>} - A promise that resolves with the response data.
+   */
+  async apiPut(url, data) {
+    return this.apiCall('PUT', url, data);
+  }
+
+  /**
+   * Convenience method for DELETE requests.
+   * @param {string} url - The API endpoint URL.
+   * @return {Promise<Object>} - A promise that resolves with the response data.
+   */
+  async apiDelete(url) {
+    return this.apiCall('DELETE', url);
+  }
 }
