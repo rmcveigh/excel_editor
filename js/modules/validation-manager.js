@@ -57,6 +57,7 @@ export class ExcelEditorValidationManager {
     if (barcodeColumnIndex === -1) {
       return;
     }
+    this.app.utilities.showLoading('Validating barcodes...');
 
     // Find all barcode input fields and validate them
     this.app.elements.tableContainer
@@ -75,15 +76,7 @@ export class ExcelEditorValidationManager {
     this.app.utilities.logDebug(
       'Auto-validated barcode fields after table load'
     );
-  }
-
-  /**
-   * Validates all barcode fields and updates their styling
-   */
-  revalidateAllVisibleFields() {
-    setTimeout(() => {
-      this.validateExistingBarcodeFields();
-    }, 100); // Small delay to ensure DOM is updated
+    this.app.utilities.hideLoading();
   }
 
   /**
@@ -124,17 +117,17 @@ export class ExcelEditorValidationManager {
       );
     }
 
-    // Check for duplicates
-    const duplicateInfo = this.findBarcodeDuplicates(
+    // Check for duplicates on the page.
+    const duplicateInfoOnPage = this.findBarcodeDuplicatesOnPage(
       trimmedValue,
       excludeRowIndex
     );
-    if (duplicateInfo.isDuplicate) {
+    if (duplicateInfoOnPage.isDuplicate) {
       result.isValid = false;
       result.messages.push(
-        `Duplicate barcode found in ${duplicateInfo.count} other row${
-          duplicateInfo.count > 1 ? 's' : ''
-        }`
+        `Duplicate barcode found in ${duplicateInfoOnPage.count} other row${
+          duplicateInfoOnPage.count > 1 ? 's' : ''
+        } on this page.`
       );
     }
 
@@ -147,7 +140,7 @@ export class ExcelEditorValidationManager {
    * @param {number} excludeRowIndex - Optional row index to exclude from duplicate checks
    * @return {Object} Object with isDuplicate flag and count of duplicates
    */
-  findBarcodeDuplicates(barcode, excludeRowIndex = -1) {
+  findBarcodeDuplicatesOnPage(barcode, excludeRowIndex = -1) {
     if (!this.app.data.filtered || this.app.data.filtered.length <= 1) {
       return { isDuplicate: false, count: 0 };
     }

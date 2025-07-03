@@ -63,11 +63,12 @@ export class ExcelEditorUIRenderer {
           if (this.app.filterManager) {
             this.app.filterManager.setupFilters();
           }
-        }, 100);
+        }, 1000);
       }
 
-      // Only fetch subject ID links if not already cached for this dataset
+      // Only fetch subject ID and tube links if not cached for this dataset
       this.fetchSubjectIdLinksOptimized();
+      this.fetchTubeLinksOptimized();
     } catch (error) {
       this.app.utilities.handleError('Error rendering table', error);
     } finally {
@@ -100,18 +101,6 @@ export class ExcelEditorUIRenderer {
 
     thead.appendChild(headerRow);
     return thead;
-  }
-
-  /**
-   * Creates the table body (<tbody>) - legacy synchronous version.
-   * @return {HTMLTableSectionElement} The created <tbody> element.
-   */
-  createTableBody() {
-    const tbody = document.createElement('tbody');
-    for (let i = 1; i < this.app.data.filtered.length; i++) {
-      tbody.appendChild(this.createTableRow(i));
-    }
-    return tbody;
   }
 
   /**
@@ -310,294 +299,12 @@ export class ExcelEditorUIRenderer {
     )}" placeholder="${Drupal.t(placeholder)}" />`;
   }
 
-  /**
-   * Creates a basic modal structure.
-   * @param {string} id - The ID for the modal.
-   * @param {string} title - The title of the modal.
-   * @param {string} content - The HTML content for the modal body.
-   * @param {Object} options - Additional options for the modal.
-   * @return {jQuery} The created modal element.
-   */
-  createModal(id, title, content, options = {}) {
-    const defaults = {
-      size: '',
-      showCloseButton: true,
-      showFooter: true,
-      footerButtons: [],
-      customClass: '',
-    };
-
-    const settings = { ...defaults, ...options };
-    const sizeClass = settings.size ? `modal-${settings.size}` : '';
-
-    const footerHtml = settings.showFooter
-      ? `<footer class="modal-card-foot">${settings.footerButtons
-          .map(
-            (btn) =>
-              `<button class="button ${btn.class || ''}" id="${btn.id || ''}">${
-                btn.text
-              }</button>`
-          )
-          .join('')}</footer>`
-      : '';
-
-    const modalHtml = `
-      <div class="modal is-active ${settings.customClass}" id="${id}">
-        <div class="modal-background"></div>
-        <div class="modal-card ${sizeClass}">
-          <header class="modal-card-head">
-            <p class="modal-card-title">${this.app.utilities.escapeHtml(
-              title
-            )}</p>
-            ${
-              settings.showCloseButton
-                ? '<button class="delete" aria-label="close"></button>'
-                : ''
-            }
-          </header>
-          <section class="modal-card-body">${content}</section>
-          ${footerHtml}
-        </div>
-      </div>`;
-
-    const modal = jQuery(modalHtml);
-    jQuery('body').append(modal);
-
-    if (settings.showCloseButton) {
-      modal
-        .find('.delete, .modal-background')
-        .on('click', () => modal.remove());
-    }
-
-    return modal;
-  }
-
-  /**
-   * Creates a confirmation dialog.
-   * @param {string} title - The title of the dialog.
-   * @param {string} message - The confirmation message.
-   * @param {Function} onConfirm - Callback for confirmation action.
-   * @param {Function} [onCancel] - Optional callback for cancellation action.
-   * @return {jQuery} The created confirmation dialog element.
-   */
-  createConfirmDialog(title, message, onConfirm, onCancel = null) {
-    const content = `<p>${this.app.utilities.escapeHtml(message)}</p>`;
-
-    const modal = this.createModal('confirm-dialog', title, content, {
-      footerButtons: [
-        { id: 'confirm-cancel', text: Drupal.t('Cancel'), class: '' },
-        { id: 'confirm-ok', text: Drupal.t('Confirm'), class: 'is-primary' },
-      ],
-    });
-
-    modal.find('#confirm-cancel').on('click', () => {
-      if (onCancel) onCancel();
-      modal.remove();
-    });
-
-    modal.find('#confirm-ok').on('click', () => {
-      if (onConfirm) onConfirm();
-      modal.remove();
-    });
-
-    return modal;
-  }
-
-  /**
-   * Creates a loading modal for long operations.
-   * @param {string} message - The message to display in the modal.
-   * @return {jQuery} The created loading modal element.
-   */
-  createLoadingModal(message) {
-    const content = `
-      <div class="has-text-centered">
-        <div class="loader mb-4"></div>
-        <p>${this.app.utilities.escapeHtml(message)}</p>
-      </div>`;
-
-    return this.createModal('loading-modal', Drupal.t('Please Wait'), content, {
-      showCloseButton: false,
-      showFooter: false,
-      customClass: 'loading-modal',
-    });
-  }
-
-  /**
-   * Updates the table header with current column state.
-   */
-  updateTableHeader() {
-    if (!this.app.elements.table || !this.app.elements.table.length) return;
-
-    const thead = this.app.elements.table.find('thead');
-    if (thead.length) {
-      thead.replaceWith(this.createTableHeader());
-    }
-  }
-
-  /**
-   * Updates specific table cells without full re-render.
-   * @param {Array<Object>} updates - Array of objects with row, col, and value properties.
-   */
-  updateTableCells(updates) {
-    if (!this.app.elements.table || !this.app.elements.table.length) return;
-
-    updates.forEach((update) => {
-      const { row, col, value } = update;
-      const cell = this.app.elements.table.find(
-        `[data-row="${row}"][data-col="${col}"]`
-      );
-      if (cell.length) {
-        if (cell.is('input, textarea, select')) {
-          cell.val(value);
-        } else {
-          cell.text(value);
-        }
-      }
-    });
-  }
-
-  /**
-   * Highlights specific rows or cells.
-   * @param {Array<Object>} targets - Array of objects with row, col, and class properties.
-   * @param {number} [duration=2000] - Duration to keep the highlight (in milliseconds).
-   */
-  highlightElements(targets, duration = 2000) {
-    targets.forEach((target) => {
-      let selector;
-      if (target.col !== undefined) {
-        selector = `[data-row="${target.row}"][data-col="${target.col}"]`;
-      } else {
-        selector = `tr[data-row="${target.row}"]`;
-      }
-
-      const element = this.app.elements.table.find(selector);
-      if (element.length) {
-        element.addClass(target.class || 'highlight');
-        setTimeout(() => {
-          element.removeClass(target.class || 'highlight');
-        }, duration);
-      }
-    });
-  }
-
-  /**
-   * Scrolls the table to a specific row.
-   * @param {number} rowIndex - The index of the row to scroll to.
-   */
-  scrollToRow(rowIndex) {
-    const row = this.app.elements.table.find(`tr[data-row="${rowIndex}"]`);
-    if (row.length) {
-      this.app.elements.tableContainer.animate(
-        {
-          scrollTop:
-            row.offset().top - this.app.elements.tableContainer.offset().top,
-        },
-        500
-      );
-    }
-  }
-
-  /**
-   * Adjusts table for mobile view.
-   */
-  adjustForMobile() {
-    const $ = jQuery;
-    const isMobile = $(window).width() < 768;
-
-    if (isMobile) {
-      this.app.elements.tableContainer.addClass('mobile-view');
-      const lessImportantColumns =
-        this.app.data.filtered[0]
-          ?.map((header, index) => {
-            if (
-              !this.app.config.editableColumns.includes(header) &&
-              !['id', 'name', 'title'].some((key) =>
-                header.toLowerCase().includes(key)
-              )
-            ) {
-              return index;
-            }
-            return null;
-          })
-          .filter((index) => index !== null) || [];
-
-      lessImportantColumns.slice(3).forEach((colIndex) => {
-        this.app.state.hiddenColumns.add(colIndex);
-      });
-    } else {
-      this.app.elements.tableContainer.removeClass('mobile-view');
-    }
-  }
-
-  /**
-   * Enhances table accessibility.
-   */
-  enhanceAccessibility() {
-    if (!this.app.elements.table || !this.app.elements.table.length) return;
-
-    this.app.elements.table.attr('role', 'grid');
-    this.app.elements.table.find('th').attr('role', 'columnheader');
-    this.app.elements.table.find('td').attr('role', 'gridcell');
-
-    this.app.elements.table.on('keydown', 'input, textarea, select', (e) => {
-      if (e.key === 'Tab') {
-        // Custom tab navigation logic could be added here
-      }
-    });
-  }
-
-  /**
-   * Debounced table update to prevent excessive re-renders.
-   */
-  getDebouncedTableUpdate() {
-    if (!this._debouncedTableUpdate) {
-      this._debouncedTableUpdate = this.app.utilities.debounce(() => {
-        this.renderTable();
-      }, 250);
-    }
-    return this._debouncedTableUpdate;
-  }
-
-  /**
-   * Saves the current table state for restoration.
-   * @return {Object} An object containing the current scroll position, selected rows, and hidden columns.
-   */
-  saveTableState() {
-    return {
-      scrollTop: this.app.elements.tableContainer.scrollTop(),
-      scrollLeft: this.app.elements.tableContainer.scrollLeft(),
-      selectedRows: Array.from(this.app.data.selected),
-      hiddenColumns: Array.from(this.app.state.hiddenColumns),
-    };
-  }
-
-  /**
-   * Restores a previously saved table state.
-   * @param {Object} state - The state object containing scroll position, selected rows, and hidden columns.
-   */
-  restoreTableState(state) {
-    if (state.scrollTop !== undefined) {
-      this.app.elements.tableContainer.scrollTop(state.scrollTop);
-    }
-    if (state.scrollLeft !== undefined) {
-      this.app.elements.tableContainer.scrollLeft(state.scrollLeft);
-    }
-    if (state.selectedRows) {
-      this.app.data.selected = new Set(state.selectedRows);
-      this.app.dataManager.updateSelectionCount();
-      this.app.dataManager.updateSelectAllCheckbox();
-    }
-    if (state.hiddenColumns) {
-      this.app.state.hiddenColumns = new Set(state.hiddenColumns);
-    }
-  }
-
   // =========================================================================
-  // OPTIMIZED SUBJECT ID LINK CACHING SYSTEM
+  // OPTIMIZED SUBJECT ID AND TUBE LINK CACHING SYSTEM
   // =========================================================================
 
   /**
-   * OPTIMIZED: Fetches subject ID links only once per dataset
+   * Fetches subject ID links only once per dataset
    */
   fetchSubjectIdLinksOptimized() {
     // Check if we've already fetched links for this dataset
@@ -629,10 +336,6 @@ export class ExcelEditorUIRenderer {
       return;
     }
 
-    this.app.utilities.logDebug(
-      `Fetching links for ${uncachedIds.length} uncached subject IDs`
-    );
-
     // Fetch the missing links
     this.fetchDogEntityUrlsBatch(uncachedIds)
       .then((result) => {
@@ -649,18 +352,70 @@ export class ExcelEditorUIRenderer {
 
           // Apply all cached links to the current table
           this.applyCachedSubjectIdLinks();
-
-          this.app.utilities.logDebug(
-            `Successfully cached links for ${
-              Object.keys(result.urls).length
-            } subjects`
-          );
         } else {
           this.app.utilities.logDebug('Failed to fetch subject ID links');
         }
       })
       .catch((error) => {
         this.app.utilities.logDebug('Error fetching subject ID links:', error);
+      });
+  }
+
+  /**
+   * Fetches tube links only once per dataset
+   */
+  fetchTubeLinksOptimized() {
+    // Check if we've already fetched links for this dataset
+    if (this.app.state.tubeLinksFullyFetched) {
+      this.app.utilities.logDebug(
+        'Tube links already fetched for this dataset, applying cached links'
+      );
+      this.applyCachedTubeLinks();
+      return;
+    }
+
+    // Check if we have subject ID data at all
+    const allAzentaIds = this.getAllAzentaIdsFromDataset();
+
+    if (allAzentaIds.length === 0) {
+      this.app.utilities.logDebug('No Azenta IDs found in dataset');
+      return;
+    }
+
+    // Filter out IDs we already have cached
+    const uncachedTubeIds = allAzentaIds.filter(
+      (id) => id && !this.app.state.tubeEntityUrlCache[id]
+    );
+
+    if (uncachedTubeIds.length === 0) {
+      this.app.utilities.logDebug('All Azenta IDs already cached');
+      this.app.state.tubeLinksFullyFetched = true;
+      this.applyCachedTubeLinks();
+      return;
+    }
+
+    // Fetch the missing links
+    this.fetchTubeEntityUrlsBatch(uncachedTubeIds)
+      .then((result) => {
+        if (result && result.success && result.urls) {
+          // Store all URLs in cache
+          Object.entries(result.urls).forEach(([azentaId, urlData]) => {
+            if (urlData && urlData.url) {
+              this.app.state.tubeEntityUrlCache[azentaId] = urlData;
+            }
+          });
+
+          // Mark this dataset as fully fetched
+          this.app.state.tubeLinksFullyFetched = true;
+
+          // Apply all cached links to the current table
+          this.applyCachedTubeLinks();
+        } else {
+          this.app.utilities.logDebug('Failed to fetch tube links');
+        }
+      })
+      .catch((error) => {
+        this.app.utilities.logDebug('Error fetching tube links:', error);
       });
   }
 
@@ -689,6 +444,30 @@ export class ExcelEditorUIRenderer {
   }
 
   /**
+   * Gets all Azenta IDs from the current dataset
+   */
+  getAllAzentaIdsFromDataset() {
+    const azentaIdColumnIndex = this.findAzentaIdColumnIndex();
+
+    if (azentaIdColumnIndex === -1) {
+      return [];
+    }
+
+    const azentaIds = [];
+
+    // Get all subject IDs from the original dataset (not just filtered)
+    for (let i = 1; i < this.app.data.original.length; i++) {
+      const id = this.app.data.original[i][azentaIdColumnIndex];
+      if (id && String(id).trim()) {
+        azentaIds.push(String(id).trim().toUpperCase());
+      }
+    }
+
+    // Return unique IDs
+    return [...new Set(azentaIds)];
+  }
+
+  /**
    * Finds the subject ID column index
    */
   findSubjectIdColumnIndex() {
@@ -697,6 +476,22 @@ export class ExcelEditorUIRenderer {
     for (let i = 0; i < headerRow.length; i++) {
       const columnName = headerRow[i];
       if (columnName && this.isSubjectIdColumn(columnName)) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * Finds the Azenta ID column index
+   */
+  findAzentaIdColumnIndex() {
+    const headerRow = this.app.data.original[0];
+
+    for (let i = 0; i < headerRow.length; i++) {
+      const columnName = String(headerRow[i]).toLowerCase();
+      if (columnName && columnName.includes('name')) {
         return i;
       }
     }
@@ -716,6 +511,37 @@ export class ExcelEditorUIRenderer {
       name.includes('subject_id') ||
       name.includes('grls_id')
     );
+  }
+
+  /**
+   * Applies cached tube links to all visible name cells
+   */
+  applyCachedTubeLinks() {
+    const $ = jQuery;
+
+    $('.name-cell:not(.processed)').each((index, element) => {
+      const $element = $(element);
+      const azentaId = $element.text().trim();
+
+      if (azentaId && this.app.state.tubeEntityUrlCache[azentaId]) {
+        const urlData = this.app.state.tubeEntityUrlCache[azentaId];
+
+        // Create the link
+        $element.html(
+          `<a href="${this.app.utilities.escapeHtml(
+            urlData.url
+          )}" target="_blank">
+            ${this.app.utilities.escapeHtml(azentaId)}
+          </a>`
+        );
+
+        // Mark as processed
+        $element.addClass('processed');
+      } else {
+        // No cached link available, mark as processed anyway
+        $element.addClass('processed');
+      }
+    });
   }
 
   /**
@@ -750,16 +576,25 @@ export class ExcelEditorUIRenderer {
   }
 
   /**
+   * Resets the tube link cache (call when loading new data)
+   */
+  resetTubeLinkCache() {
+    this.app.state.tubeLinksFullyFetched = false;
+    this.app.state.tubeEntityUrlCache = {};
+  }
+
+  /**
    * Resets the subject ID link cache (call when loading new data)
    */
   resetSubjectIdLinkCache() {
     this.app.state.subjectLinksFullyFetched = false;
     this.app.state.dogEntityUrlCache = {};
-    this.app.utilities.logDebug('Subject ID link cache reset');
   }
 
   /**
-   * Enhanced fetchDogEntityUrlsBatch with better error handling
+   * Fetches dog entity URLs in batches
+   * @param {Array} grlsIds - Array of GRLS IDs to fetch URLs
+   * @returns {Promise<Object>} - A promise that resolves with the fetched URLs
    */
   async fetchDogEntityUrlsBatch(grlsIds) {
     try {
@@ -767,20 +602,37 @@ export class ExcelEditorUIRenderer {
         return { success: true, urls: {} };
       }
 
-      this.app.utilities.logDebug(
-        `Fetching URLs for ${grlsIds.length} subject IDs:`,
-        grlsIds
-      );
-
-      const response = await this.app.utilities.apiPost(
+      return await this.app.utilities.apiPost(
         this.app.config.endpoints.getDogEntityUrls,
         { grls_ids: grlsIds }
       );
-
-      this.app.utilities.logDebug('Subject ID API response:', response);
-      return response;
     } catch (error) {
       this.app.utilities.logDebug('Failed to fetch dog entity links:', error);
+      return {
+        success: false,
+        urls: {},
+        message: error.message,
+      };
+    }
+  }
+
+  /**
+   * Fetches tube entity URLs in batches
+   * @param {Array} azentaIds - Array of Azenta IDs to fetch URLs
+   * @returns {Promise<Object>} - A promise that resolves with the fetched URLs
+   */
+  async fetchTubeEntityUrlsBatch(azentaIds) {
+    try {
+      if (!azentaIds || azentaIds.length === 0) {
+        return { success: true, urls: {} };
+      }
+
+      return await this.app.utilities.apiPost(
+        this.app.config.endpoints.getTubeEntityUrls,
+        { azenta_ids: azentaIds }
+      );
+    } catch (error) {
+      this.app.utilities.logDebug('Failed to fetch tube entity links:', error);
       return {
         success: false,
         urls: {},

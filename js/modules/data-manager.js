@@ -16,6 +16,8 @@ export class ExcelEditorDataManager {
     try {
       if (!this.app.utilities.validateFile(file)) return;
 
+      this.app.state.currentFilename = file.name;
+
       this.app.utilities.showLoading('Processing Excel file...');
 
       // Read file as ArrayBuffer for worker compatibility
@@ -38,13 +40,6 @@ export class ExcelEditorDataManager {
 
       this.loadData(parsedData);
       this.app.utilities.hideLoading();
-
-      this.app.utilities.showMessage(
-        `Successfully loaded ${this.app.data.original.length - 1} rows from ${
-          file.name
-        }`,
-        'success'
-      );
     } catch (error) {
       console.error('Error processing file:', error);
       this.app.utilities.hideLoading();
@@ -283,8 +278,6 @@ export class ExcelEditorDataManager {
    * Loads the parsed data into the application's state.
    */
   async loadData(data) {
-    this.app.utilities.logDebug('Loading data into application...', data);
-
     if (!data || data.length === 0) {
       throw new Error('No data found in file');
     }
@@ -303,6 +296,11 @@ export class ExcelEditorDataManager {
     // Reset subject ID link cache for new dataset
     if (this.app.uiRenderer && this.app.uiRenderer.resetSubjectIdLinkCache) {
       this.app.uiRenderer.resetSubjectIdLinkCache();
+    }
+
+    // Reset tube link cache for new dataset
+    if (this.app.uiRenderer && this.app.uiRenderer.resetTubeLinkCache()) {
+      this.app.uiRenderer.resetTubeLinkCache();
     }
 
     this.applyDefaultColumnVisibility();
@@ -472,7 +470,6 @@ export class ExcelEditorDataManager {
     this.app.utilities.logDebug(
       message + (errorCount > 0 ? ` (${errorCount} errors)` : '')
     );
-    this.app.utilities.showMessage(message, 'success', 4000);
   }
 
   /**

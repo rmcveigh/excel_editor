@@ -42,9 +42,6 @@ export class ExcelEditorFilterManager {
     // Check if the structure already exists
     if ($('#active-filters-container').length > 0) {
       // Structure exists, don't recreate it
-      this.app.utilities.logDebug(
-        'Filter structure already exists, skipping creation'
-      );
       return;
     }
 
@@ -187,8 +184,6 @@ export class ExcelEditorFilterManager {
       </div>`;
 
     this.app.elements.filtersContainer.html(fullStructure);
-    this.app.utilities.logDebug('Created fresh filter structure');
-
     // Add column visibility notification after creating the base structure
     this.updateColumnVisibilityStatus();
   }
@@ -204,7 +199,6 @@ export class ExcelEditorFilterManager {
       containerWrapper.show();
       this.activeFiltersVisible = true;
       this.updateActiveFiltersContent();
-      this.app.utilities.logDebug('Showed active filters container');
     }
   }
 
@@ -218,7 +212,6 @@ export class ExcelEditorFilterManager {
     if (containerWrapper.length) {
       containerWrapper.hide();
       this.activeFiltersVisible = false;
-      this.app.utilities.logDebug('Hid active filters container');
     }
   }
 
@@ -457,7 +450,6 @@ export class ExcelEditorFilterManager {
     });
 
     modal.find('#clear-column-filter').on('click', async () => {
-      this.app.utilities.showQuickLoader('Clearing column filter...');
       try {
         await this.removeFilter(columnIndex);
         modal.remove();
@@ -467,7 +459,6 @@ export class ExcelEditorFilterManager {
     });
 
     modal.find('#apply-filter').on('click', async () => {
-      this.app.utilities.showQuickLoader('Applying filter...');
       try {
         await this.applyFilterFromModal(modal, columnIndex);
         modal.remove();
@@ -765,10 +756,6 @@ export class ExcelEditorFilterManager {
    */
   updateActiveFiltersDisplay() {
     const filterCount = Object.keys(this.app.state.currentFilters).length;
-
-    this.app.utilities.logDebug(
-      `Updating active filters display: ${filterCount} filters`
-    );
 
     if (filterCount === 0) {
       this.hideActiveFilters();

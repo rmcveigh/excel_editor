@@ -21,6 +21,34 @@ final class DraftManager {
   ) {}
 
   /**
+   * Checks if a draft name is already taken by the current user.
+   *
+   * @param string $name
+   *   The draft name to check.
+   * @param int|null $excludeDraftId
+   *   A draft ID to exclude from the check (used when updating a draft).
+   *
+   * @return bool
+   *   TRUE if the name is taken, FALSE otherwise.
+   *
+   * @throws \Exception
+   */
+  public function isDraftNameTaken(string $name, ?int $excludeDraftId = NULL): bool {
+    $query = $this->connection->select('excel_editor_drafts', 'd')
+      ->fields('d', ['id'])
+      ->condition('d.name', $name)
+      ->condition('d.uid', $this->currentUser->id());
+
+    if ($excludeDraftId !== NULL) {
+      $query->condition('d.id', $excludeDraftId, '<>');
+    }
+
+    $result = $query->range(0, 1)->execute()->fetchField();
+
+    return (bool) $result;
+  }
+
+  /**
    * Saves a new draft for the current user.
    *
    * @param string $name
@@ -30,6 +58,8 @@ final class DraftManager {
    *
    * @return int|null
    *   The ID of the saved draft, or null on failure.
+   *
+   * @throws \Exception
    */
   public function saveDraft(string $name, array $data): ?int {
     $fields = [

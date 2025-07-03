@@ -227,10 +227,6 @@ export class ExcelEditorUtilities {
       const response = await fetch('/session/token');
       if (response.ok) {
         this.app.csrfToken = await response.text();
-        this.logDebug(
-          'CSRF token obtained:',
-          this.app.csrfToken ? 'Yes' : 'No'
-        );
       } else {
         console.warn('Failed to get CSRF token:', response.status);
       }
@@ -287,41 +283,6 @@ export class ExcelEditorUtilities {
     }
 
     return response.json();
-  }
-
-  /**
-   * Determines if intensive loading should be shown based on data size.
-   * @param {string} operationType - The type of operation ('filter', 'render', 'export', or 'default').
-   * @return {boolean} - True if intensive loader should be shown, false otherwise.
-   */
-  shouldShowIntensiveLoader(operationType = 'default') {
-    const thresholds = {
-      filter: 100,
-      render: 200,
-      export: 500,
-      default: 150,
-    };
-
-    const threshold = thresholds[operationType] || thresholds.default;
-    return this.app.data.original.length > threshold;
-  }
-
-  /**
-   * Creates a debounced function wrapper.
-   * @param {Function} func - The function to debounce.
-   * @param {number} wait - The number of milliseconds to wait before invoking the function.
-   * @return {Function} - A debounced version of the function.
-   */
-  debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-      const later = () => {
-        clearTimeout(timeout);
-        func.apply(this, args);
-      };
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
   }
 
   /**
@@ -384,17 +345,5 @@ export class ExcelEditorUtilities {
    */
   async apiDelete(url) {
     return this.apiCall('DELETE', url);
-  }
-
-  /**
-   * Logs debug messages in the worker context.
-   * @param {string} message - The debug message to log.
-   * @param {any} args - Additional arguments to log.
-   */
-  debugWorker(message, ...args) {
-    if (this.app.config.settings.debug) {
-      // eslint-disable-next-line no-console
-      console.log(`%c[Worker Debug] ${message}`, 'color: #a044ff', ...args);
-    }
   }
 }

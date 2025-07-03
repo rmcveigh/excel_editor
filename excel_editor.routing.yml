@@ -46,7 +46,7 @@ excel_editor.delete_draft:
     _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::deleteDraft'
   requirements:
     _permission: 'use excel editor'
-    _method: 'DELETE'
+    _method: 'POST'
     draft_id: '\d+'
     _format: 'json'
   options:
@@ -62,11 +62,21 @@ excel_editor.list_drafts:
     _method: 'GET'
     _format: 'json'
 
-# Get URL for a dog by GRLS ID.
-excel_editor.get_dog_entity_url:
+# Get URL for dogs by GRLS IDs.
+excel_editor.get_dog_entity_urls:
   path: '/excel-editor/dog-entity-urls'
   defaults:
     _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::getDogEntityUrls'
+  requirements:
+    _permission: 'use excel editor'
+    _method: 'GET'
+    _format: 'json'
+
+# Get URL for tubes by Azenta IDs.
+excel_editor.get_tube_entity_urls:
+  path: '/excel-editor/tube-entity-urls'
+  defaults:
+    _controller: '\Drupal\excel_editor\Controller\ExcelEditorController::getTubeEntityUrls'
   requirements:
     _permission: 'use excel editor'
     _method: 'GET'

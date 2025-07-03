@@ -44,18 +44,6 @@ export class ExcelEditorBarcodeSystem {
       healthCode +
       'R';
 
-    this.app.utilities.logDebug(
-      `Tissue Research Barcode: "${subjectId}" → "${barcode}"`,
-      {
-        subjectId: cleanSubjectId,
-        biopsyCode,
-        tissueCode,
-        biopsySpecificCode,
-        healthCode,
-        result: barcode,
-      }
-    );
-
     return barcode;
   }
 
@@ -182,9 +170,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found Biopsy/Necropsy column: "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -198,9 +183,6 @@ export class ExcelEditorBarcodeSystem {
           header.includes(pattern) &&
           (header.includes('biopsy') || header.includes('necropsy'))
         ) {
-          this.app.utilities.logDebug(
-            `Found Biopsy/Necropsy column (flexible): "${headerRow[i]}" at index ${i}`
-          );
           return i;
         }
       }
@@ -226,9 +208,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found Req Tissue Type column: "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -240,9 +219,6 @@ export class ExcelEditorBarcodeSystem {
         header.includes('tissue') &&
         header.includes('type')
       ) {
-        this.app.utilities.logDebug(
-          `Found Req Tissue Type column (flexible): "${headerRow[i]}" at index ${i}`
-        );
         return i;
       }
     }
@@ -267,9 +243,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found Vial Tissue Type column: "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -281,9 +254,6 @@ export class ExcelEditorBarcodeSystem {
         header.includes('tissue') &&
         header.includes('type')
       ) {
-        this.app.utilities.logDebug(
-          `Found Vial Tissue Type column (flexible): "${headerRow[i]}" at index ${i}`
-        );
         return i;
       }
     }
@@ -344,9 +314,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found ID column (exact): "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -375,9 +342,6 @@ export class ExcelEditorBarcodeSystem {
       const header = String(headerRow[i]).trim().toLowerCase();
       for (const pattern of flexibleMatches) {
         if (header.includes(pattern)) {
-          this.app.utilities.logDebug(
-            `Found ID column (flexible): "${headerRow[i]}" at index ${i}`
-          );
           return i;
         }
       }
@@ -405,9 +369,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found Health Status column (exact): "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -425,9 +386,6 @@ export class ExcelEditorBarcodeSystem {
       const header = String(headerRow[i]).trim().toLowerCase();
       for (const pattern of flexibleMatches) {
         if (header.includes(pattern)) {
-          this.app.utilities.logDebug(
-            `Found Health Status column (flexible): "${headerRow[i]}" at index ${i}`
-          );
           return i;
         }
       }
@@ -456,9 +414,6 @@ export class ExcelEditorBarcodeSystem {
     for (const exactMatch of exactMatches) {
       const index = headerRow.indexOf(exactMatch);
       if (index !== -1) {
-        this.app.utilities.logDebug(
-          `Found Barcode column: "${exactMatch}" at index ${index}`
-        );
         return index;
       }
     }
@@ -486,9 +441,6 @@ export class ExcelEditorBarcodeSystem {
       const header = String(headerRow[i]).trim().toLowerCase();
       for (const pattern of patterns) {
         if (header.includes(pattern)) {
-          this.app.utilities.logDebug(
-            `Found Category column: "${headerRow[i]}" at index ${i}`
-          );
           return i;
         }
       }
@@ -509,9 +461,6 @@ export class ExcelEditorBarcodeSystem {
       const header = String(headerRow[i]).trim().toLowerCase();
       for (const pattern of patterns) {
         if (header.includes(pattern)) {
-          this.app.utilities.logDebug(
-            `Found Priority column: "${headerRow[i]}" at index ${i}`
-          );
           return i;
         }
       }
@@ -575,11 +524,6 @@ export class ExcelEditorBarcodeSystem {
 
     if (settings.maxLength)
       formatted = formatted.substring(0, settings.maxLength);
-
-    this.app.utilities.logDebug(
-      `Formatted barcode: "${sourceValue}" + ${contextType}:"${contextValue}" → "${formatted}"`,
-      settings
-    );
 
     return formatted;
   }

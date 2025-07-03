@@ -36,8 +36,11 @@ class ExcelEditor {
       currentProcessLoader: null,
       currentDraftId: null,
       currentDraftName: '',
+      currentFilename: null,
       dogEntityUrlCache: {},
       subjectLinksFullyFetched: false,
+      tubeEntityUrlCache: {},
+      tubeLinksFullyFetched: false,
     };
 
     // Configuration from Drupal settings
@@ -97,7 +100,6 @@ class ExcelEditor {
       }
 
       this.state.isInitialized = true;
-      this.utilities.logDebug('Excel Editor initialized successfully');
     } catch (error) {
       this.utilities.handleError('Failed to initialize Excel Editor', error);
     }
@@ -108,8 +110,6 @@ class ExcelEditor {
    */
   async initializeWorkerManager() {
     try {
-      this.utilities.logDebug('Initializing Web Worker...');
-
       const workerReady = await this.workerManager.initialize();
 
       if (workerReady) {
@@ -143,8 +143,6 @@ class ExcelEditor {
     if (missing.length > 0) {
       throw new Error(`Missing required dependencies: ${missing.join(', ')}`);
     }
-
-    this.utilities.logDebug('All dependencies loaded successfully');
   }
 
   /**
@@ -172,7 +170,6 @@ class ExcelEditor {
       resetBarcodesBtn: $('#reset-barcodes-btn'),
       validateBarcodesBtn: $('#validate-barcodes-btn'),
     };
-    this.utilities.logDebug('Cached DOM elements');
   }
 
   /**
@@ -507,55 +504,6 @@ class ExcelEditor {
   }
 
   // =========================================================================
-  // PERFORMANCE MONITORING
-  // =========================================================================
-
-  /**
-   * Monitor operation performance
-   * @param {string} operation - Name of the operation
-   * @param {Function} fn - Function to execute
-   * @returns {Promise<any>} - Result of the operation
-   */
-  async monitorPerformance(operation, fn) {
-    if (!this.config.settings.debug) {
-      return fn();
-    }
-
-    const startTime = performance.now();
-    this.utilities.logDebug(`Starting operation: ${operation}`);
-
-    try {
-      const result = await fn();
-      const endTime = performance.now();
-      const duration = Math.round(endTime - startTime);
-
-      this.utilities.logDebug(
-        `Operation ${operation} completed in ${duration}ms`
-      );
-
-      // Show performance notification for long operations
-      if (duration > 2000) {
-        this.utilities.showMessage(
-          `${operation} completed in ${(duration / 1000).toFixed(1)}s`,
-          'info',
-          3000
-        );
-      }
-
-      return result;
-    } catch (error) {
-      const endTime = performance.now();
-      const duration = Math.round(endTime - startTime);
-
-      this.utilities.logDebug(
-        `Operation ${operation} failed after ${duration}ms:`,
-        error
-      );
-      throw error;
-    }
-  }
-
-  // =========================================================================
   // CLEANUP
   // =========================================================================
 
@@ -580,8 +528,6 @@ class ExcelEditor {
     const $ = jQuery;
     $(document).off('keydown');
     $(window).off('beforeunload');
-
-    this.utilities.logDebug('Excel Editor resources cleaned up');
   }
 }
 
@@ -665,6 +611,7 @@ function loadXLSXLibrary() {
  * Drupal behavior to initialize Excel Editor.
  */
 Drupal.behaviors.excelEditor = {
+  // eslint-disable-next-line no-unused-vars
   attach: function (context, settings) {
     once('excel-editor', '.excel-editor-container', context).forEach(function (
       element

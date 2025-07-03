@@ -40,24 +40,58 @@ export class ExcelEditorDraftManager {
    */
   async saveDraft(draftName = null) {
     try {
-      // Show prompt for draft name if not provided
-      if (!draftName) {
-        draftName =
-          this.app.state.currentDraftName ||
-          prompt(
-            Drupal.t('Enter a name for this draft:'),
-            this.app.state.currentDraftName || Drupal.t('Untitled Draft')
+      if (this.app.state.currentDraftId && !draftName) {
+        draftName = this.app.state.currentDraftName;
+      } else if (!draftName) {
+        let isNameValid = false;
+        let promptShown = false;
+
+        // Loop until a valid, unique name is provided or the user cancels
+        do {
+          const defaultName =
+            this.app.state.currentDraftName ||
+            this.app.state.currentFilename ||
+            Drupal.t('Untitled Draft');
+
+          if (promptShown) {
+            draftName = prompt(
+              Drupal.t('That name is already in use. Please choose another:'),
+              defaultName
+            );
+          } else {
+            draftName = prompt(
+              Drupal.t('Enter a name for this draft:'),
+              defaultName
+            );
+          }
+
+          promptShown = true;
+
+          if (draftName === null) {
+            return; // User canceled the prompt
+          }
+
+          draftName = draftName.trim();
+          const existingNames = (this.app.state.draftsList || []).map(
+            (d) => d.name
           );
+
+          if (existingNames.includes(draftName)) {
+            isNameValid = false;
+          } else {
+            isNameValid = true;
+          }
+        } while (!isNameValid);
       }
 
-      if (!draftName) return; // User canceled the prompt
+      if (!draftName) return;
 
       this.app.utilities.showProcessLoader(
         Drupal.t('Saving draft...'),
         'draft-save'
       );
 
-      // Prepare the draft data without filters and hidden columns
+      // Prepare the draft data
       const draftData = this.prepareDraftData(draftName);
 
       // Save the draft
@@ -74,7 +108,7 @@ export class ExcelEditorDraftManager {
         // Update the drafts list
         await this.loadDrafts();
 
-        this.app.utilities.showNotification(
+        this.app.utilities.showMessage(
           Drupal.t('Draft saved successfully'),
           'success'
         );
@@ -101,11 +135,11 @@ export class ExcelEditorDraftManager {
       );
 
       const response = await this.app.utilities.apiGet(
-        `${this.app.config.endpoints.getDraft}/${draftId}`
+        `${this.app.config.endpoints.loadDraft}/${draftId}`
       );
 
-      if (response.success && response.draft) {
-        const draft = response.draft;
+      if (response.success && response.data) {
+        const draft = response.data;
 
         // Reset any existing filters and hidden columns before loading the draft
         this.app.state.currentFilters = {};
@@ -114,26 +148,20 @@ export class ExcelEditorDraftManager {
         // Load the draft data
         this.app.data.original = draft.data;
         this.app.data.selected = new Set(draft.selected || []);
-        this.app.state.currentDraftId = draft.id;
-        this.app.state.currentDraftName = draft.name;
+        this.app.state.currentDraftId = response.id || draft.id;
+        this.app.state.currentDraftName = response.name || draft.name;
 
         // Process and display the data
         this.app.dataManager.processLoadedData();
-
-        this.app.utilities.showNotification(
+        this.app.utilities.showMessage(
           Drupal.t('Draft loaded successfully'),
           'success'
         );
-
-        return true;
       } else {
         throw new Error(response.message || Drupal.t('Failed to load draft'));
       }
     } catch (error) {
       this.app.utilities.handleError(Drupal.t('Failed to load draft'), error);
-      return false;
-    } finally {
-      this.app.utilities.hideProcessLoader('draft-load');
     }
   }
 
@@ -155,7 +183,7 @@ export class ExcelEditorDraftManager {
     this.app.utilities.showQuickLoader('Deleting draft...');
     try {
       const response = await this.app.utilities.apiCall(
-        'DELETE',
+        'POST',
         `${this.app.config.endpoints.deleteDraft}${draftId}`
       );
 
@@ -192,8 +220,10 @@ export class ExcelEditorDraftManager {
       );
 
       if (response.success && response.drafts) {
+        this.app.state.draftsList = response.drafts;
         this.renderDrafts(response.drafts);
       } else {
+        this.app.state.draftsList = [];
         this.app.elements.draftsContainer.html(
           `<p class="has-text-grey">${Drupal.t('No drafts available')}</p>`
         );

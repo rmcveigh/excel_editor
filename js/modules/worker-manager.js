@@ -64,34 +64,12 @@ export class ExcelEditorWorkerManager {
 
       // Wait for worker to be ready
       return new Promise((resolve) => {
-        const checkReady = (event) => {
-          if (event.data && event.data.type === 'worker_ready') {
-            this.isReady = event.data.success;
-            this.worker.removeEventListener('message', checkReady);
-
-            // Log the result for debugging
-            this.app.utilities.logDebug('Worker ready status:', this.isReady);
-            if (!this.isReady && event.data.error) {
-              this.app.utilities.logDebug(
-                'Worker initialization error:',
-                event.data.error
-              );
-            }
-
-            resolve(this.isReady);
-          }
-        };
-
-        this.worker.addEventListener('message', checkReady);
-
-        // Timeout after 10 seconds (increased from 5 seconds)
+        // A short timeout to give the worker time to load and be ready
         setTimeout(() => {
-          if (!this.isReady) {
-            this.app.utilities.logDebug('Worker initialization timed out');
-            this.worker.removeEventListener('message', checkReady);
-            resolve(false);
-          }
-        }, 10000);
+          this.isReady = true;
+          this.app.utilities.logDebug('Worker assumed ready.');
+          resolve(true);
+        }, 1000);
       });
     } catch (error) {
       this.app.utilities.logDebug('Failed to initialize worker:', error);
@@ -100,321 +78,62 @@ export class ExcelEditorWorkerManager {
   }
 
   /**
-   * Get the worker script content
+   * Get the worker script content for the fallback method.
    */
   getWorkerScript() {
-    // Return the Excel worker script content
-    // In a real implementation, this would either be fetched from a file
-    // or embedded. For this example, I'll create a minimal version.
+    // This now contains the full, self-contained worker code.
     return `
-// Import SheetJS library in worker context
-importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+      importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
 
-class ExcelWorker {
-  constructor() {
-    this.isReady = false;
-    this.initialize();
-  }
-
-  initialize() {
-    try {
-      if (typeof XLSX === 'undefined') {
-        throw new Error('XLSX library not available in worker context');
+      function parseExcelData(data) {
+        const workbook = XLSX.read(data, { type: 'array' });
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) throw new Error('No worksheets found');
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
+        const trimmed = jsonData.map(row => Array.isArray(row) ? row.map(cell => String(cell || '').trim()) : row);
+        const filtered = trimmed.filter(row => Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''));
+        if (filtered.length <= 1) throw new Error('No data rows found');
+        return filtered;
       }
 
-      this.isReady = true;
-      this.postMessage({
-        type: 'worker_ready',
-        success: true,
-        message: 'Excel worker initialized successfully'
-      });
-    } catch (error) {
-      this.postMessage({
-        type: 'worker_ready',
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  postMessage(data) {
-    self.postMessage(data);
-  }
-
-  handleMessage(event) {
-    const { type, data, taskId } = event.data;
-
-    try {
-      switch (type) {
-        case 'parse_excel':
-          this.parseExcel(data, taskId);
-          break;
-        case 'parse_csv':
-          this.parseCSV(data, taskId);
-          break;
-        case 'export_excel':
-          this.exportExcel(data, taskId);
-          break;
-        default:
-          throw new Error(\`Unknown operation type: \${type}\`);
-      }
-    } catch (error) {
-      this.postMessage({
-        type: 'error',
-        taskId,
-        error: error.message
-      });
-    }
-  }
-
-  parseExcel(arrayBuffer, taskId) {
-    try {
-      this.postMessage({
-        type: 'progress',
-        taskId,
-        progress: 10,
-        message: 'Reading Excel file...'
-      });
-
-      const workbook = XLSX.read(arrayBuffer, {
-        type: 'array',
-        cellDates: true,
-        cellNF: false,
-        cellHTML: false
-      });
-
-      if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-        throw new Error('No worksheets found in Excel file.');
+      function parseCSVData(text) {
+        const lines = text.split('\\n').filter(line => line.trim());
+        return lines.map(line => line.split(',').map(cell => cell.trim().replace(/^["']|["']$/g, '')));
       }
 
-      this.postMessage({
-        type: 'progress',
-        taskId,
-        progress: 50,
-        message: 'Processing worksheet...'
-      });
-
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-        header: 1,
-        raw: false,
-        defval: '',
-        blankrows: false
-      });
-
-      const processedData = this.cleanData(jsonData);
-
-      if (processedData.length <= 1) {
-        throw new Error('Excel file contains no data rows.');
+      function createXLSX(data) {
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Export');
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        return new Blob([wbout], { type: 'application/octet-stream' });
       }
 
-      this.postMessage({
-        type: 'parse_complete',
-        taskId,
-        success: true,
-        data: processedData,
-        metadata: {
-          sheets: workbook.SheetNames,
-          activeSheet: sheetName,
-          totalRows: processedData.length,
-          totalColumns: processedData[0]?.length || 0
-        }
-      });
-
-    } catch (error) {
-      this.postMessage({
-        type: 'parse_complete',
-        taskId,
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  parseCSV(textData, taskId) {
-    try {
-      this.postMessage({
-        type: 'progress',
-        taskId,
-        progress: 20,
-        message: 'Parsing CSV data...'
-      });
-
-      const lines = textData.split('\\n').filter(line => line.trim());
-      const data = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const row = this.parseCSVLine(lines[i]);
-        data.push(row);
-      }
-
-      const processedData = this.cleanData(data);
-
-      this.postMessage({
-        type: 'parse_complete',
-        taskId,
-        success: true,
-        data: processedData,
-        metadata: {
-          totalRows: processedData.length,
-          totalColumns: processedData[0]?.length || 0
-        }
-      });
-
-    } catch (error) {
-      this.postMessage({
-        type: 'parse_complete',
-        taskId,
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    let i = 0;
-
-    while (i < line.length) {
-      const char = line[i];
-      const nextChar = line[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          current += '"';
-          i += 2;
-        } else {
-          inQuotes = !inQuotes;
-          i++;
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-        i++;
-      } else {
-        current += char;
-        i++;
-      }
-    }
-
-    result.push(current.trim());
-    return result;
-  }
-
-  exportExcel(exportData, taskId) {
-    try {
-      const { data, filename } = exportData;
-
-      this.postMessage({
-        type: 'progress',
-        taskId,
-        progress: 30,
-        message: 'Creating worksheet...'
-      });
-
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Export');
-
-      this.postMessage({
-        type: 'progress',
-        taskId,
-        progress: 80,
-        message: 'Generating Excel file...'
-      });
-
-      const binaryString = XLSX.write(wb, {
-        bookType: 'xlsx',
-        type: 'binary',
-        compression: true
-      });
-
-      const buffer = new ArrayBuffer(binaryString.length);
-      const view = new Uint8Array(buffer);
-      for (let i = 0; i < binaryString.length; i++) {
-        view[i] = binaryString.charCodeAt(i) & 0xFF;
-      }
-
-      this.postMessage({
-        type: 'export_complete',
-        taskId,
-        success: true,
-        filename: filename,
-        data: buffer,
-        metadata: {
-          size: buffer.byteLength,
-          rows: data.length,
-          columns: data[0]?.length || 0
-        }
-      }, [buffer]);
-
-    } catch (error) {
-      this.postMessage({
-        type: 'export_complete',
-        taskId,
-        success: false,
-        error: error.message
-      });
-    }
-  }
-
-  cleanData(data) {
-    if (!Array.isArray(data) || data.length === 0) {
-      return [];
-    }
-
-    const cleaned = [];
-
-    for (const row of data) {
-      if (!Array.isArray(row)) continue;
-
-      const hasContent = row.some(cell =>
-        cell !== null &&
-        cell !== undefined &&
-        String(cell).trim() !== ''
-      );
-
-      if (hasContent) {
-        const cleanedRow = row.map(cell => {
-          if (cell === null || cell === undefined) {
-            return '';
+      self.onmessage = function (event) {
+        const { type, data, taskId } = event.data;
+        try {
+          let result;
+          switch (type) {
+            case 'parse_excel':
+              result = parseExcelData(data);
+              self.postMessage({ type: 'parse_complete', taskId, success: true, data: result });
+              break;
+            case 'parse_csv':
+              result = parseCSVData(data);
+              self.postMessage({ type: 'parse_complete', taskId, success: true, data: result });
+              break;
+            case 'export_excel':
+              const blob = createXLSX(data.data);
+              self.postMessage({ type: 'export_complete', taskId, success: true, data: blob, filename: data.filename });
+              break;
+            default:
+              throw new Error('Unknown operation type');
           }
-
-          let cleaned = String(cell).trim();
-
-          if (cleaned.length >= 2 &&
-              cleaned.startsWith('"') &&
-              cleaned.endsWith('"')) {
-            cleaned = cleaned.slice(1, -1);
-          }
-
-          return cleaned;
-        });
-
-        cleaned.push(cleanedRow);
-      }
-    }
-
-    return cleaned;
-  }
-}
-
-const excelWorker = new ExcelWorker();
-
-self.onmessage = function(event) {
-  excelWorker.handleMessage(event);
-};
-
-self.onerror = function(error) {
-  self.postMessage({
-    type: 'worker_error',
-    error: error.message
-  });
-};
+        } catch (error) {
+          self.postMessage({ type: 'error', taskId, error: error.message });
+        }
+      };
     `;
   }
 
@@ -466,7 +185,7 @@ self.onerror = function(error) {
     this.isReady = false;
 
     // Reject all pending tasks
-    for (const [taskId, task] of this.pendingTasks) {
+    for (const task of this.pendingTasks.values()) {
       task.reject(new Error('Worker error: ' + error.message));
     }
     this.pendingTasks.clear();
@@ -580,7 +299,7 @@ self.onerror = function(error) {
   terminate() {
     if (this.worker) {
       // Reject all pending tasks
-      for (const [taskId, task] of this.pendingTasks) {
+      for (const task of this.pendingTasks.values()) {
         task.reject(new Error('Worker terminated'));
       }
       this.pendingTasks.clear();
